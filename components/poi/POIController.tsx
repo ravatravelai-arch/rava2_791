@@ -17,7 +17,6 @@ import {
   Clock, Zap, Play, Square, BookOpen
 } from 'lucide-react';
 
-// Sub-components
 import { POIHeader } from './POIHeader';
 import { POIFootprintSection } from './POIFootprintSection';
 
@@ -33,11 +32,9 @@ const Category3DIcon = ({ category, size = "text-5xl" }: { category: string, siz
   return <span className={`${size} drop-shadow-2xl`}>📍</span>;
 };
 
-// تابع بهینه‌سازی تصاویر (Unsplash)
 const getOptimizedImageUrl = (url: string) => {
   if (!url) return '';
   if (url.includes('images.unsplash.com')) {
-    // اگر پارامترهای قبلی دارد، آن‌ها را نگه دار یا بازنویسی کن
     return url.includes('?') ? `${url}&q=70&w=800` : `${url}?q=70&w=800`;
   }
   return url;
@@ -48,9 +45,11 @@ export const POIController: React.FC = () => {
     activePOI, setActivePOI, 
     fullDetailPOI, setFullDetailPOI,
     isLoadingDetails, setLoadingDetails,
-    addFootprintToActive, userLocation,
+    addFootprintOptimistic, // استفاده از متد جدید
+    userLocation,
     isCelebratingStamp, setCelebratingStamp,
-    isNarrativePlaying, setNarrativePlaying
+    isNarrativePlaying, setNarrativePlaying,
+    clearActivePOI // استفاده از اکشن جدید برای خروج کامل
   } = useMapStore();
   
   const { addStamp, wallet, isStamping } = useUserStore();
@@ -63,7 +62,6 @@ export const POIController: React.FC = () => {
 
   const activeRequestIdRef = useRef<string | null>(null);
 
-  // ۱. بیداری سیستم عصبی صوتی
   useEffect(() => {
     audioGraph.onNarrativeStop = () => {
       setNarrativePlaying(false);
@@ -73,17 +71,24 @@ export const POIController: React.FC = () => {
     };
   }, [setNarrativePlaying]);
 
-  // ۲. منطق پیش‌بارگذاری هوشمند (Pre-fetching) فاز ۴ - اصلاح شده (CORS Ready)
+  // اصلاح شده: مدیریت مموری لیک برای صدای راوی
   useEffect(() => {
-    if (fullDetailPOI?.narrative?.audio_url) {
-      console.log(`[Resilience] Warming up CORS-ready cache: ${fullDetailPOI.name}`);
-      fetch(fullDetailPOI.narrative.audio_url).then(() => {
-        console.log(`[Resilience] Narrative cached with full headers.`);
-      }).catch(() => {
-        console.warn(`[Resilience] Pre-fetch failed. Will try again on Play.`);
-      });
-    }
-  }, [fullDetailPOI]);
+    if (!fullDetailPOI?.narrative?.audio_url) return;
+    
+    const controller = new AbortController();
+    fetch(fullDetailPOI.narrative.audio_url, { signal: controller.signal })
+      .then(() => console.log('[POI] Narrative audio cached successfully'))
+      .catch(() => {}); // هندل کردن خطای Abort به صورت سایلنت
+      
+    return () => controller.abort(); // کنسل کردن فچ هنگام تغییر POI
+  }, [fullDetailPOI?.narrative?.audio_url]);
+
+  // اصلاح شده: Safety net برای تایمر جشن
+  useEffect(() => {
+    if (!isCelebratingStamp) return;
+    const safetyId = setTimeout(() => setCelebratingStamp(false), 5000);
+    return () => clearTimeout(safetyId);
+  }, [isCelebratingStamp, setCelebratingStamp]);
 
   const attemptStamping = useCallback(async (poiId: string, poiName: string, poiLat: number, poiLng: number) => {
     const geo = GeoPoint.fromArray(userLocation);
@@ -93,13 +98,17 @@ export const POIController: React.FC = () => {
     const alreadyStamped = wallet.stamps.some(s => s.placeId === poiId);
 
     if (isNearby && !alreadyStamped) {
-      await addStamp({
-        id: Math.random().toString(), 
-        placeId: poiId,
-        placeName: poiName,
-        date: new Date().toLocaleDateString('fa-IR')
-      });
-      setCelebratingStamp(true);
+      try {
+        await addStamp({
+          id: Math.random().toString(), 
+          placeId: poiId,
+          placeName: poiName,
+          date: new Date().toLocaleDateString('fa-IR')
+        });
+        setCelebratingStamp(true);
+      } catch (err) {
+        console.error("[POI] Stamp failed silently:", err);
+      }
     }
   }, [userLocation, wallet.stamps, addStamp, setCelebratingStamp, isStamping]);
 
@@ -107,28 +116,39 @@ export const POIController: React.FC = () => {
     if (!activePOI) return;
     
     const requestId = activePOI.id;
+    const poiSnapshot = { ...activePOI }; // کپی برای استفاده بعد از await
+
     activeRequestIdRef.current = requestId;
     setLoadingDetails(true);
     
     try {
-      const curatedInfo = await PlaceService.fetchHybridDetails(requestId);
+      // اصلاح شده: استفاده از Promise.all برای موازی‌سازی و سرعت بیشتر
+      const [curatedInfo, googleInfo] = await Promise.all([
+        PlaceService.fetchHybridDetails(requestId),
+        PlaceService.fetchFullDetails(requestId)
+      ]);
+
+      // گارد امنیتی: اگر کاربر روی مکان دیگری کلیک کرده، ادامه نده
       if (activeRequestIdRef.current !== requestId) return;
 
-      const googleInfo = await PlaceService.fetchFullDetails(requestId);
+      const updatedPOI = { ...poiSnapshot, ...curatedInfo, ...googleInfo };
       
-      const updatedPOI = { ...activePOI, ...curatedInfo, ...googleInfo };
+      // الگوی رفع Layout Conflict: اول استیت قبلی پاک شود
+      setActivePOI(null);
       setFullDetailPOI(updatedPOI);
       
       if (curatedInfo.is_curated) {
         setVibeCheck(curatedInfo.description || null);
       } else {
         const vibe = await PlaceService.getAIVibeCheck(updatedPOI.reviews || []);
+        if (activeRequestIdRef.current !== requestId) return; // چک مجدد بعد از await دوم
         setVibeCheck(vibe);
       }
       
-      attemptStamping(activePOI.id, activePOI.name, activePOI.lat, activePOI.lng);
+      attemptStamping(poiSnapshot.id, poiSnapshot.name, poiSnapshot.lat, poiSnapshot.lng);
     } catch (e) {
-      console.error("Expand Error:", e);
+      console.error("[POI] Expand Error:", e);
+      activeRequestIdRef.current = null;
     } finally {
       if (activeRequestIdRef.current === requestId) {
         setLoadingDetails(false);
@@ -153,12 +173,15 @@ export const POIController: React.FC = () => {
     if (!comment.trim() || !fullDetailPOI) return;
     setIsSubmitting(true);
     
+    // شبیه‌سازی ارسال (در فازهای بعدی به سرور متصل می‌شود)
+    // فعلاً از addFootprintOptimistic استفاده می‌کنیم
     setTimeout(() => {
-      addFootprintToActive(fullDetailPOI.id, {
+      addFootprintOptimistic(fullDetailPOI.id, {
         id: Math.random().toString(),
         user: 'شما',
         text: comment,
-        date: 'همین الان'
+        date: 'همین الان',
+        is_verified: false
       });
       setComment('');
       setIsSubmitting(false);
@@ -181,7 +204,8 @@ export const POIController: React.FC = () => {
                 <Category3DIcon category={activePOI.category} size="text-9xl" />
               </div>
               <div className="flex items-start justify-between mb-8">
-                <button onClick={() => { activeRequestIdRef.current = null; setActivePOI(null); }} className="w-12 h-12 glass rounded-2xl flex items-center justify-center text-white/40 hover:text-white transition-all active:scale-90">
+                {/* دکمه بستن با استفاده از clearActivePOI برای تمیزی کامل */}
+                <button onClick={() => { activeRequestIdRef.current = null; clearActivePOI(); }} className="w-12 h-12 glass rounded-2xl flex items-center justify-center text-white/40 hover:text-white transition-all active:scale-90">
                   <X size={24} />
                 </button>
                 <div className="text-right flex-1 pr-6">
@@ -193,7 +217,7 @@ export const POIController: React.FC = () => {
                 </div>
                 <motion.div layoutId={`img-${activePOI.id}`} className="w-20 h-20 bg-white/5 rounded-[2.2rem] flex items-center justify-center border border-white/10 shrink-0 overflow-hidden">
                    {activePOI.image ? (
-                     <img src={getOptimizedImageUrl(activePOI.image)} className="w-full h-full object-cover" />
+                     <img src={getOptimizedImageUrl(activePOI.image)} className="w-full h-full object-cover" alt={activePOI.name} />
                    ) : (
                      <Category3DIcon category={activePOI.category} size="text-4xl" />
                    )}
@@ -314,9 +338,12 @@ export const POIController: React.FC = () => {
                   onSubmit={submitFootprint}
                 />
 
-                <button className="w-full bg-gradient-to-b from-white to-neutral-200 text-black py-7 rounded-[3.5rem] font-black text-2xl shadow-[0_30px_60px_rgba(255,255,255,0.05)] flex items-center justify-center gap-6 active:scale-[0.98] transition-all">
-                  <Waveform size={32} className="text-indigo-600" />
-                  <span className="mt-1">راهنمای صوتی لوکس</span>
+                <button 
+                  disabled 
+                  className="w-full bg-gradient-to-b from-white/10 to-neutral-800/10 text-white/30 py-7 rounded-[3.5rem] font-black text-2xl flex items-center justify-center gap-6 cursor-not-allowed"
+                >
+                  <Waveform size={32} className="text-indigo-400/30" />
+                  <span className="mt-1">راهنمای صوتی لوکس — به زودی</span>
                 </button>
               </div>
             </motion.div>

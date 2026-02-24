@@ -7,20 +7,44 @@ export const useMapStore = create<MapState>((set) => ({
   activePOI: null,
   fullDetailPOI: null,
   nearbyFootprints: [],
+  pendingFootprints: [], // اضافه شد طبق برنامه فاز ۲
   isLoadingDetails: false,
   isCelebratingStamp: false,
   isNarrativePlaying: false,
 
   setUserLocation: (loc: [number, number]) => set({ userLocation: loc }),
-  setActivePOI: (poi: POI | null) => set({ activePOI: poi }),
+  
+  // اتمیک کردن تغییر مکان: همزمان با تغییر POI، وضعیت‌های وابسته را ریست می‌کند
+  setActivePOI: (poi: POI | null) => set((state) => ({
+    activePOI: poi,
+    fullDetailPOI: poi !== null ? null : state.fullDetailPOI,
+    isNarrativePlaying: false,
+    isLoadingDetails: false,
+    // ردپاهای موقت (Pending) با تغییر مکان پاک می‌شوند
+    pendingFootprints: poi !== null ? [] : state.pendingFootprints,
+  })),
+
+  // اکشن جدید برای پاکسازی کامل
+  clearActivePOI: () => set({
+    activePOI: null,
+    fullDetailPOI: null,
+    isNarrativePlaying: false,
+    isLoadingDetails: false,
+    pendingFootprints: [],
+  }),
+
   setFullDetailPOI: (poi: POI | null) => set({ fullDetailPOI: poi }),
   setNearbyFootprints: (footprints: Footprint[]) => set({ nearbyFootprints: footprints }),
   setLoadingDetails: (val: boolean) => set({ isLoadingDetails: val }),
   setCelebratingStamp: (val: boolean) => set({ isCelebratingStamp: val }),
   setNarrativePlaying: (val: boolean) => set({ isNarrativePlaying: val }),
   
-  addFootprintToActive: (poiId: string, footprint: Footprint) => set((state) => {
+  // تغییر نام متد (منطق اصلاح شده: استفاده از pendingFootprints)
+  addFootprintOptimistic: (poiId: string, footprint: Footprint) => set((state) => {
+    if (!state.activePOI || state.activePOI.id !== poiId) return {};
+
     const pendingFootprint: Footprint = { ...footprint, is_verified: false };
+
     const updatedFullDetailPOI = (state.fullDetailPOI && state.fullDetailPOI.id === poiId)
       ? {
           ...state.fullDetailPOI,
@@ -30,7 +54,8 @@ export const useMapStore = create<MapState>((set) => ({
 
     return {
       fullDetailPOI: updatedFullDetailPOI,
-      nearbyFootprints: [pendingFootprint, ...state.nearbyFootprints]
+      // اینجا به جای nearbyFootprints، به pendingFootprints اضافه می‌شود
+      pendingFootprints: [pendingFootprint, ...state.pendingFootprints]
     };
   }),
 }));

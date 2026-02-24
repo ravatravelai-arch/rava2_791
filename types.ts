@@ -194,7 +194,8 @@ export interface MapState {
   setLoadingDetails: (val: boolean) => void;
   setCelebratingStamp: (val: boolean) => void;
   setNarrativePlaying: (val: boolean) => void;
-  addFootprintToActive: (poiId: string, footprint: Footprint) => void;
+  addFootprintOptimistic: (poiId: string, footprint: Footprint) => void;
+  clearActivePOI: () => void;
 }
 
 export interface SurvivalState {
