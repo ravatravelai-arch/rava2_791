@@ -1,0 +1,813 @@
+================================================================================
+         گزارش تحلیل فنی و برنامه اجرایی — پروژه رهنما (Rahnamaa)
+         Technical Analysis Report & Execution Plan
+         نسخه: ۱.۰ | تاریخ تهیه: ۱۴۰۴
+================================================================================
+
+این فایل باید در ریشه پروژه قرار گیرد و در هر فاز اجرایی به هوش مصنوعی کدنویس
+ضمیمه شود تا زمینه کامل مشکلات، تحلیل‌ها و تصمیمات معماری در اختیار داشته باشد.
+
+================================================================================
+بخش اول: معرفی پروژه و Context فنی
+================================================================================
+
+نام پروژه: رهنما (Rahnamaa)
+نوع: تورلیدر هوش مصنوعی (AI Travel Guide) — نسخه MVP
+شهرهای فعال: دبی و استانبول (سایر شهرها در فازهای بعدی)
+
+Stack فنی:
+  - Frontend: React 19 + TypeScript + Vite + Tailwind CSS
+  - State Management: Zustand
+  - Backend: Supabase (Auth + Database + Storage)
+  - Edge Functions: Supabase Edge Functions (Deno)
+  - Map: Google Maps API (@vis.gl/react-google-maps)
+  - AI: Gemini Live API (WebSocket) برای مکالمه صوتی
+
+فایل‌های تحلیل‌شده در این گزارش:
+  ۱. components/map/MainMap.tsx
+  ۲. components/poi/POIController.tsx
+  ۳. store/useMapStore.ts
+  ۴. services/discoveryService.ts
+
+================================================================================
+بخش دوم: خلاصه اجرایی (Executive Summary)
+================================================================================
+
+دو مشکل اصلی گزارش‌شده توسط تیم:
+  ۱. مارکرهای Curated (مکان‌های منتخب دبی/استانبول) روی نقشه نمایش داده نمی‌شوند
+  ۲. کلیک روی مارکرهای خود گوگل مپ (رستوران‌ها و...)، پنجره سفید پیش‌فرض
+     گوگل را نشان می‌دهد به جای کارت سفارشی برنامه
+
+ریشه مشکل اول:
+  احتمال ۱ (معماری): تضاد بین @vis.gl/react-google-maps (Declarative) و
+  MarkerClusterer از @googlemaps/markerclusterer (Imperative). این دو کتابخانه
+  با هم ناسازگارند و MarkerClusterer مالکیت DOM مارکرها را می‌گیرد.
+
+  احتمال ۲ (داده): کوئری Supabase برای دریافت مکان‌های منتخب (.eq روی جدول
+  join شده) در PostgREST به درستی کار نمی‌کند و آرایه خالی برمی‌گرداند.
+
+  احتمال ۳ (State): مقدار اولیه showCurated در useDiscoveryStore ممکن است
+  false باشد که باعث می‌شود حتی با وجود داده، هیچ مارکری رندر نشود.
+
+ریشه مشکل دوم:
+  در handlePoiClick در MainMap.tsx، هیچ‌گاه event.stop() صدا زده نمی‌شود.
+  گوگل مپ بعد از fire کردن event، رفتار پیش‌فرض (InfoWindow سفید) را اجرا
+  می‌کند مگر اینکه صریحاً متوقف شود.
+
+================================================================================
+بخش سوم: تحلیل تفصیلی هر فایل
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+۳.۱ فایل: components/map/MainMap.tsx
+────────────────────────────────────────────────────────────────────────────────
+
+🔴 مشکل ۱ (بحرانی) — تضاد معماری Declarative vs. Imperative
+  شرح: کد از AdvancedMarker کتابخانه @vis.gl/react-google-maps استفاده می‌کند
+  که یک wrapper React است (Declarative). همزمان ref این مارکرها گرفته می‌شود
+  و به MarkerClusterer از @googlemaps/markerclusterer داده می‌شود که یک
+  کتابخانه Imperative است.
+
+  چرا مشکل‌ساز است:
+  - MarkerClusterer انتظار دارد google.maps.marker.AdvancedMarkerElement خالص
+    (native DOM object) دریافت کند
+  - ref روی کامپوننت React AdvancedMarker یا null برمی‌گرداند یا یک wrapper
+    object که native marker نیست
+  - نتیجه: clusterer کنترل render را می‌گیرد ولی نمی‌تواند مارکرها را نمایش دهد
+
+  Race Condition فرعی:
+  - setMarkerRef در زمان mount کامپوننت صدا زده می‌شود
+  - clustererRef.current در این لحظه هنوز null است (handleMapLoad اجرا نشده)
+  - شرط if (clustererRef.current) در setMarkerRef false است
+  - مارکرها هرگز به clusterer اضافه نمی‌شوند
+  - حتی اگر بعداً map load شود، مارکرهای قبلی ثبت نمی‌شوند
+
+  راه‌حل: برای MVP با ۴۰ مارکر (۲۰ دبی + ۲۰ استانبول)، MarkerClusterer کاملاً
+  حذف شود. AdvancedMarkerها در @vis.gl بدون clusterer به درستی رندر می‌شوند.
+
+🔴 مشکل ۲ (بحرانی) — پنجره سفید پیش‌فرض گوگل
+  شرح: در handlePoiClick، event.stop() صدا زده نمی‌شود.
+  گوگل مپ بعد از اجرای listeners کاربر، اگر stop نبیند، InfoWindow پیش‌فرض
+  سفید خود را باز می‌کند.
+
+  کد فعلی (مشکل‌دار):
+    const handlePoiClick = useCallback(async (event: any) => {
+      const placeId = event.placeId || (event.detail && event.detail.placeId);
+      // ← هیچ event.stop() وجود ندارد!
+      if (!placeId || fetchingRef.current === placeId) return;
+      ...
+
+  راه‌حل: event.stop() باید اولین خط handler باشد، قبل از هر منطق دیگری.
+
+🟠 مشکل ۳ — Memory Leak در setTimeout
+  شرح: در finally بلوک handlePoiClick:
+    setTimeout(() => { fetchingRef.current = null; }, 500);
+  اگر component قبل از ۵۰۰ms unmount شود، timeout همچنان اجرا می‌شود.
+
+  راه‌حل: استفاده از fetchTimeoutRef برای نگه‌داری timeout ID و cleanup آن.
+
+🟡 مشکل ۴ — showCurated بررسی نشده
+  شرح: visibleCurated = showCurated ? curatedPlaces : []
+  اگر مقدار اولیه showCurated در useDiscoveryStore برابر false باشد،
+  حتی با وجود داده، هیچ مارکری رندر نمی‌شود.
+  این باید اولین چیزی باشد که قبل از شروع فازها بررسی می‌شود.
+
+────────────────────────────────────────────────────────────────────────────────
+۳.۲ فایل: components/poi/POIController.tsx
+────────────────────────────────────────────────────────────────────────────────
+
+🔴 مشکل ۱ (بحرانی) — Race Condition در handleExpand
+  شرح: دو درخواست async به صورت sequential اجرا می‌شوند:
+    const curatedInfo = await PlaceService.fetchHybridDetails(requestId);
+    if (activeRequestIdRef.current !== requestId) return; // ← چک می‌کند
+    const googleInfo = await PlaceService.fetchFullDetails(requestId);
+    // ← اینجا دیگر چک نمی‌شود!
+
+  سناریوی فاجعه:
+  - کاربر روی مکان A کلیک می‌کند (request 1 شروع)
+  - سریع روی مکان B کلیک می‌کند (request 2 شروع)
+  - request 1 دیر جواب می‌دهد
+  - چون چک نهایی نیست، اطلاعات مکان A روی کارت مکان B نمایش داده می‌شود
+
+  راه‌حل: Promise.all برای موازی‌سازی + چک activeRequestIdRef بعد از هر دو.
+
+🔴 مشکل ۲ (بحرانی) — submitFootprint جعلی و بدون ارسال به سرور
+  شرح: این تابع هیچ چیزی به Supabase نمی‌فرستد. فقط state لوکال را با
+  setTimeout جعلی آپدیت می‌کند. با refresh صفحه همه از بین می‌رود.
+  footprintService.ts در پروژه وجود دارد اما استفاده نمی‌شود.
+
+  مشکلات فرعی:
+  - Math.random() به جای UUID واقعی
+  - 'شما' به جای نام کاربر واقعی از store
+  - 'همین الان' به جای تاریخ واقعی
+
+🔴 مشکل ۳ — layoutId Conflict در Framer Motion
+  شرح: کارت کوچک با شرط {activePOI && !fullDetailPOI} نمایش داده می‌شود.
+  در handleExpand، ابتدا setLoadingDetails(true) اجرا می‌شود، نه setFullDetailPOI.
+  یعنی هر دو کارت می‌توانند همزمان در DOM باشند در حین loading.
+  Framer Motion دو المنت با یک layoutId همزمان می‌بیند — undefined behavior.
+
+  راه‌حل: در handleExpand، بعد از شروع loading، setActivePOI(null) صدا زده
+  شود تا کارت کوچک unmount شود. Trade-off: انیمیشن morph از بین می‌رود و
+  به fade تبدیل می‌شود — برای MVP قابل قبول است.
+
+🟠 مشکل ۴ — Memory Leak در Pre-fetch صدا
+  شرح:
+    useEffect(() => {
+      if (fullDetailPOI?.narrative?.audio_url) {
+        fetch(fullDetailPOI.narrative.audio_url).then(...).catch(...);
+        // ← fetch هرگز لغو نمی‌شود
+      }
+    }, [fullDetailPOI]);
+
+  اگر کاربر سریع مکان‌ها را عوض کند، ده‌ها درخواست دانلود فایل صوتی در
+  پس‌زمینه باز می‌ماند و bandwidth و RAM را مصرف می‌کند.
+
+  راه‌حل: AbortController با cleanup در return تابع useEffect.
+
+🟠 مشکل ۵ — attemptStamping بدون error handling
+  شرح: تابع async است اما بدون await و catch صدا زده می‌شود.
+  خطاها به عنوان unhandled promise rejection ظاهر می‌شوند.
+
+🟡 مشکل ۶ — Open Now و Trending همیشه ثابت هستند
+  شرح: مقادیر hardcode شده‌اند و همیشه سبز/فعال نشان داده می‌شوند.
+  هیچ ارتباطی به fullDetailPOI.openNow یا داده واقعی ندارند.
+
+🟡 مشکل ۷ — دکمه "راهنمای صوتی لوکس" بدون onClick
+  شرح: یک دکمه مرده در UI که هیچ عملکردی ندارد و کاربر را گمراه می‌کند.
+
+🟡 مشکل ۸ — img بدون alt attribute
+  شرح: هم accessibility و هم هشدار React.
+
+────────────────────────────────────────────────────────────────────────────────
+۳.۳ فایل: store/useMapStore.ts
+────────────────────────────────────────────────────────────────────────────────
+
+🔴 مشکل ۱ (بحرانی) — isNarrativePlaying هنگام تغییر POI reset نمی‌شود
+  شرح: هیچ مکانیزمی وجود ندارد که وقتی activePOI عوض می‌شود، پخش صدا را
+  قطع کند. کاربر مکان را عوض می‌کند اما صدای مکان قبلی پخش می‌شود.
+  setActivePOI فقط activePOI را آپدیت می‌کند و بس.
+
+🔴 مشکل ۲ (بحرانی) — nearbyFootprints هرگز cleanup نمی‌شود
+  شرح: با هر addFootprintOptimistic، یک آیتم اضافه می‌شود اما هرگز پاک
+  نمی‌شود. ردپاهای مکان‌های قدیمی روی نقشه به عنوان مارکر باقی می‌مانند.
+
+  تصمیم معماری مهم:
+  nearbyFootprints دو نوع داده مختلف را در خود نگه می‌دارد:
+  ۱. ردپاهای لود شده از سرور (persistent) — باید بمانند
+  ۲. ردپاهای ثبت‌شده در این session (ephemeral) — باید با تغییر POI پاک شوند
+
+  پاک کردن nearbyFootprints در setActivePOI یک باگ رگرسیون ایجاد می‌کند:
+  کاربر POI را باز می‌کند → nearbyFootprints پاک می‌شود → POI را می‌بندد →
+  ردپاهای اولیه برنمی‌گردند.
+
+  راه‌حل صحیح: تفکیک به دو آرایه جداگانه:
+  - nearbyFootprints: ردپاهای سرور (هرگز دست نخورد)
+  - pendingFootprints: ردپاهای session جاری (با تغییر POI پاک شود)
+
+🟠 مشکل ۳ — state inconsistency بین setActivePOI و setFullDetailPOI
+  شرح: در کامپوننت‌ها مجبوریم چند set را پشت سر هم صدا بزنیم:
+    setFullDetailPOI(null);
+    setActivePOI(poi);
+  هر set یک render جداگانه ایجاد می‌کند. بین این دو render، state می‌تواند
+  inconsistent باشد.
+  راه‌حل: action ترکیبی clearActivePOI.
+
+🟠 مشکل ۴ — isCelebratingStamp ممکن است برای همیشه true بماند
+  شرح: اگر StampCelebration بدون اجرای onComplete unmount شود، این flag
+  گیر می‌کند. دفعه بعد کاربر بی‌دلیل جشن می‌بیند.
+
+  تصمیم معماری مهم:
+  setTimeout نباید داخل Zustand store باشد. این با معماری reactive ناسازگار
+  است و در SSR و تست می‌شکند.
+  راه‌حل: useEffect با cleanup در POIController.tsx.
+
+🟡 مشکل ۵ — نام‌گذاری گمراه‌کننده addFootprintToActive
+  شرح: این تابع یک optimistic update انجام می‌دهد، نه ارسال به سرور.
+  نام باید addFootprintOptimistic باشد.
+
+────────────────────────────────────────────────────────────────────────────────
+۳.۴ فایل: services/discoveryService.ts
+────────────────────────────────────────────────────────────────────────────────
+
+🔴 مشکل ۱ (بحرانی) — کوئری Supabase Join فیلتر نمی‌کند
+  شرح: این کد احتمالاً ریشه اصلی مشکل نمایش نداشتن مارکرهاست.
+
+  کد فعلی (مشکل‌دار):
+    .from('attractions')
+    .select('..., destinations!inner(name)')
+    .eq('destinations.name', cityName)  // ← این کار نمی‌کند
+
+  در Supabase PostgREST، فیلتر کردن روی جدول join شده با
+  .eq('related_table.column', value) پشتیبانی نمی‌شود به این شکل.
+  نتیجه: یا همه attractions بدون فیلتر برمی‌گردند یا آرایه خالی.
+
+  راه‌حل: روش دو مرحله‌ای (Two-Step Query):
+  مرحله ۱: SELECT id FROM destinations WHERE name = cityName
+  مرحله ۲: SELECT * FROM attractions WHERE destination_id = dest.id
+
+🔴 مشکل ۲ — Silent Failure در parse مختصات
+  شرح:
+    const geo = GeoPoint.fromPostGIS(item.location);
+    return { lat: geo?.lat || 0, lng: geo?.lng || 0, ... }
+    .filter(poi => poi.lat !== 0 && poi.lng !== 0);
+
+  اگر GeoPoint.fromPostGIS نتواند parse کند، مختصات 0,0 می‌شود، بی‌صدا
+  فیلتر می‌شود و هرگز نمی‌دانیم چرا آن مکان نمایش داده نمی‌شود.
+
+🟠 مشکل ۳ — خطاها بلعیده می‌شوند (Error Swallowing)
+  شرح:
+    if (error) {
+      console.error('RPC Error:', error);
+      return []; // ← caller نمی‌داند خطا بوده یا نتیجه واقعاً خالی است
+    }
+  سرویس نباید تصمیم‌گیرنده نهایی باشد. باید throw کند تا Store یا UI
+  بتواند تصمیم بگیرد (مثلاً نمایش دکمه Retry).
+
+🟠 مشکل ۴ — کامنت متناقض مختصات در searchNearby
+  شرح: کامنت می‌گوید "RPC انتظار مختصات swap شده دارد" اما کد مقادیر
+  خام ارسال می‌کند. کامنت گمراه‌کننده است و باید اصلاح شود.
+  (کد احتمالاً صحیح است — PostGIS ST_MakePoint(lng, lat) — کامنت اشتباه است)
+
+🟡 مشکل ۵ — moodTags ناهماهنگ بین دو متد
+  شرح:
+  در searchNearby:   moodTags: [item.category]
+  در getCurated:     moodTags: item.is_premium ? ['Premium', 'Verified'] : []
+  این ناهماهنگی در UI برای کاربر inconsistency ایجاد می‌کند.
+
+================================================================================
+بخش چهارم: برنامه اجرایی (Execution Plan)
+================================================================================
+
+⚠️  پیش‌نیاز اجباری — قبل از شروع هر فاز:
+────────────────────────────────────────────────────────────────────────────────
+فایل useDiscoveryStore.ts را باز کن.
+مقدار اولیه showCurated را پیدا کن.
+اگر false است، همین الان به true تغییر بده و save کن.
+اگر این چک نشود، هیچ‌کدام از فازهای بعدی نتیجه نمی‌دهند چون حتی با وجود
+داده صحیح، visibleCurated = [] خواهد بود و هیچ مارکری رندر نمی‌شود.
+
+
+"همین الان فایل types.ts را باز کن و pendingFootprints: Footprint[] را به اینترفیس MapState اضافه کن تا در فاز ۱ دچار خطای تایپ‌اسکریپت نشوی."
+
+ترتیب اجرای صحیح فازها:
+  پیش‌نیاز → فاز ۳ (داده) → فاز ۱ (نقشه) → فاز ۲ (state)
+  دلیل: اگر داده نیاید، نمی‌توان مطمئن بود مشکل از state یا رندر است.
+
+================================================================================
+فاز ۱ — رفع مشکلات بحرانی نقشه
+فایل: components/map/MainMap.tsx
+================================================================================
+
+هدف این فاز:
+  ۱. مارکرهای Curated با حذف MarkerClusterer نمایش داده شوند
+  ۲. پنجره سفید گوگل با اضافه کردن event.stop() حذف شود
+  ۳. Memory Leak مربوط به setTimeout برطرف شود
+
+────────────────────────────────────────
+تغییر ۱: حذف کامل MarkerClusterer
+────────────────────────────────────────
+این import را حذف کن:
+  import { MarkerClusterer } from '@googlemaps/markerclusterer';
+
+این ref‌ها را از MainMap حذف کن:
+  const clustererRef = useRef<MarkerClusterer | null>(null);
+  const markersMapRef = useRef<Map<string, any>>(new Map());
+
+این تابع را کامل حذف کن:
+  const handleMapLoad = useCallback((map: any) => { ... });
+
+این تابع را کامل حذف کن:
+  const setMarkerRef = useCallback((marker: any | null, key: string) => { ... });
+
+این useEffect را کامل حذف کن (useEffect مربوط به cleanup clusterer):
+  useEffect(() => {
+    return () => {
+      if (clustererRef.current) { ... }
+      markersMapRef.current.clear();
+    };
+  }, []);
+
+این prop را از <GoogleMap> حذف کن:
+  onLoad={handleMapLoad}
+
+────────────────────────────────────────
+تغییر ۲: پاکسازی کامپوننت‌های مارکر
+────────────────────────────────────────
+از CuratedMarker حذف کن:
+  - پارامتر setMarkerRef از props و type تعریف آن
+  - خط: ref={(marker) => setMarkerRef(marker, poi.id)}
+
+از FootprintMarker حذف کن:
+  - پارامتر setMarkerRef از props و type تعریف آن
+  - خط: ref={(marker) => setMarkerRef(marker, fp.id)}
+
+در JSX جایی که CuratedMarker رندر می‌شود:
+  prop setMarkerRef={setMarkerRef} را حذف کن
+
+در JSX جایی که FootprintMarker رندر می‌شود:
+  prop setMarkerRef={setMarkerRef} را حذف کن
+
+────────────────────────────────────────
+تغییر ۳: جلوگیری از پنجره سفید گوگل
+────────────────────────────────────────
+در handlePoiClick، این خط را به عنوان اولین خط اضافه کن:
+
+  const handlePoiClick = useCallback(async (event: any) => {
+    event.stop(); // ← این خط باید اول باشد - جلوگیری از InfoWindow پیش‌فرض
+    const placeId = event.placeId || (event.detail && event.detail.placeId);
+    ...
+
+────────────────────────────────────────
+تغییر ۴: رفع Memory Leak در setTimeout
+────────────────────────────────────────
+یک ref جدید اضافه کن (کنار سایر ref‌ها):
+  const fetchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+در finally بلوک handlePoiClick را به این تغییر بده:
+  } finally {
+    setLoadingDetails(false);
+    if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
+    fetchTimeoutRef.current = setTimeout(() => {
+      fetchingRef.current = null;
+    }, 500);
+  }
+
+یک useEffect برای cleanup اضافه کن:
+  useEffect(() => {
+    return () => {
+      if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
+    };
+  }, []);
+
+────────────────────────────────────────
+تغییر ۵: آپدیت نمایش Footprint‌ها در JSX
+────────────────────────────────────────
+در JSX، بخش نمایش FootprintMarker را به این تغییر بده:
+  (توضیح: pendingFootprints از فاز ۲ می‌آید، اما JSX را از همین فاز آماده کن)
+
+  {[...nearbyFootprints, ...(pendingFootprints || [])].map(fp => (
+    <FootprintMarker key={fp.id} fp={fp} />
+  ))}
+
+──────────────────────────────────────────────────────────────────────────────
+تست‌های فاز ۱ (بعد از اجرا بررسی کن):
+  ✓ آیا در Console خطای مربوط به clusterer یا addMarker وجود ندارد؟
+  ✓ آیا کلیک روی مکان‌های گوگل (رستوران و...) پنجره سفید نمی‌دهد؟
+  ✓ آیا کارت سفارشی برنامه هنگام کلیک روی مکان‌های گوگل نمایش داده می‌شود؟
+  (نمایش مارکرها هنوز به فاز ۳ بستگی دارد)
+
+================================================================================
+فاز ۲ — رفع مشکلات State Management
+فایل‌ها: store/useMapStore.ts + components/poi/POIController.tsx
+================================================================================
+
+هدف این فاز:
+  ۱. State‌های stale بین مکان‌های مختلف حذف شوند
+  ۲. Race Condition در handleExpand برطرف شود
+  ۳. Memory Leak در pre-fetch صدا حذف شود
+  ۴. Safety net برای isCelebratingStamp اضافه شود
+
+══════════════════════════════════════════
+بخش ۲-الف: فایل store/useMapStore.ts
+══════════════════════════════════════════
+
+────────────────────────────────────────
+تغییر ۱: اضافه کردن pendingFootprints به State
+────────────────────────────────────────
+این field را به State اضافه کن (هم در store هم در MapState interface در types.ts):
+  pendingFootprints: Footprint[]
+
+مقدار اولیه:
+  pendingFootprints: [],
+
+توضیح معماری:
+  nearbyFootprints = ردپاهای لود شده از سرور (persistent - هرگز دست نخورد)
+  pendingFootprints = ردپاهای ثبت‌شده در این session (ephemeral)
+  این تفکیک جلوگیری می‌کند از باگ "ردپاها بعد از بستن POI برنمی‌گردند"
+
+────────────────────────────────────────
+تغییر ۲: بازنویسی setActivePOI به atomic action
+────────────────────────────────────────
+کد فعلی (مشکل‌دار):
+  setActivePOI: (poi: POI | null) => set({ activePOI: poi }),
+
+کد جدید (صحیح):
+  setActivePOI: (poi: POI | null) => set((state) => ({
+    activePOI: poi,
+    // اگر مکان جدید انتخاب شد، fullDetail قبلی را پاک کن
+    fullDetailPOI: poi !== null ? null : state.fullDetailPOI,
+    // روایت صوتی را متوقف کن
+    isNarrativePlaying: false,
+    // loading را reset کن
+    isLoadingDetails: false,
+    // فقط pendingFootprints پاک می‌شود (ردپاهای ephemeral session جاری)
+    // nearbyFootprints (ردپاهای سرور) هرگز دست نخورد
+    pendingFootprints: poi !== null ? [] : state.pendingFootprints,
+  })),
+
+────────────────────────────────────────
+تغییر ۳: اضافه کردن action ترکیبی clearActivePOI
+────────────────────────────────────────
+این action جدید را اضافه کن:
+  clearActivePOI: () => set({
+    activePOI: null,
+    fullDetailPOI: null,
+    isNarrativePlaying: false,
+    isLoadingDetails: false,
+    pendingFootprints: [],
+    // nearbyFootprints دست نخورده باقی می‌ماند
+  }),
+
+این action را به MapState interface در types.ts هم اضافه کن:
+  clearActivePOI: () => void;
+
+سپس در تمام فایل‌هایی که این pattern وجود دارد:
+  setActivePOI(null);
+  setFullDetailPOI(null);
+را با این جایگزین کن:
+  clearActivePOI();
+
+────────────────────────────────────────
+تغییر ۴: بازنویسی addFootprintToActive → addFootprintOptimistic
+────────────────────────────────────────
+نام را از addFootprintToActive به addFootprintOptimistic تغییر بده.
+(این نام جدید منعکس می‌کند که این یک optimistic update است، نه ارسال به سرور)
+
+منطق داخلی را بازنویسی کن:
+  addFootprintOptimistic: (poiId: string, footprint: Footprint) => set((state) => {
+    // Guard: فقط اگر کاربر در این لحظه روی همین POI باشد
+    if (!state.activePOI || state.activePOI.id !== poiId) return {};
+
+    const pendingFootprint: Footprint = { ...footprint, is_verified: false };
+
+    // آپدیت fullDetailPOI برای نمایش فوری در کارت
+    const updatedFullDetailPOI = (state.fullDetailPOI?.id === poiId)
+      ? {
+          ...state.fullDetailPOI,
+          footprints: [pendingFootprint, ...(state.fullDetailPOI.footprints || [])]
+        }
+      : state.fullDetailPOI;
+
+    return {
+      fullDetailPOI: updatedFullDetailPOI,
+      // به pendingFootprints اضافه می‌شود (نه nearbyFootprints)
+      pendingFootprints: [pendingFootprint, ...state.pendingFootprints],
+    };
+  }),
+
+────────────────────────────────────────
+تغییر ۵: اضافه کردن clearNearbyFootprints
+────────────────────────────────────────
+(برای آینده، وقتی لود از سرور پیاده‌سازی شد)
+  clearNearbyFootprints: () => set({ nearbyFootprints: [] }),
+
+══════════════════════════════════════════
+بخش ۲-ب: فایل components/poi/POIController.tsx
+══════════════════════════════════════════
+
+────────────────────────────────────────
+تغییر ۱: آپدیت import از store
+────────────────────────────────────────
+addFootprintToActive را به addFootprintOptimistic تغییر بده در destructuring:
+  const { ..., addFootprintOptimistic, ... } = useMapStore();
+
+و در submitFootprint همین نام جدید را استفاده کن.
+
+────────────────────────────────────────
+تغییر ۲: بازنویسی handleExpand
+────────────────────────────────────────
+کد جدید (با رفع Race Condition و موازی‌سازی):
+
+  const handleExpand = async () => {
+    if (!activePOI) return;
+
+    const requestId = activePOI.id;
+    // ذخیره snapshot قبل از null کردن (برای رفع layoutId conflict)
+    const poiSnapshot = { ...activePOI };
+
+    activeRequestIdRef.current = requestId;
+    setLoadingDetails(true);
+
+    // کارت کوچک را unmount کن تا layoutId conflict نداشته باشیم
+    // Trade-off: انیمیشن morph به fade تبدیل می‌شود — برای MVP قابل قبول
+    setActivePOI(null);
+
+    try {
+      // موازی‌سازی دو درخواست (کاهش زمان لود تا ۵۰٪)
+      const [curatedInfo, googleInfo] = await Promise.all([
+        PlaceService.fetchHybridDetails(requestId),
+        PlaceService.fetchFullDetails(requestId)
+      ]);
+
+      // چک بعد از هر دو درخواست
+      if (activeRequestIdRef.current !== requestId) return;
+
+      const updatedPOI = { ...poiSnapshot, ...curatedInfo, ...googleInfo };
+      setFullDetailPOI(updatedPOI);
+
+      if (curatedInfo.is_curated) {
+        setVibeCheck(curatedInfo.description || null);
+      } else {
+        const vibe = await PlaceService.getAIVibeCheck(updatedPOI.reviews || []);
+        // چک سوم: بعد از vibe check هم بررسی کن
+        if (activeRequestIdRef.current !== requestId) return;
+        setVibeCheck(vibe);
+      }
+
+      // stamping بدون await اما با error handling
+      attemptStamping(poiSnapshot.id, poiSnapshot.name, poiSnapshot.lat, poiSnapshot.lng)
+        .catch(err => console.error("[POI] Stamp failed silently:", err));
+
+    } catch (e) {
+      console.error("[POI] Expand Error:", e);
+      // در صورت خطا، state را به حالت اولیه برگردان
+      activeRequestIdRef.current = null;
+    } finally {
+      if (activeRequestIdRef.current === requestId) {
+        setLoadingDetails(false);
+      }
+    }
+  };
+
+────────────────────────────────────────
+تغییر ۳: Safety net برای isCelebratingStamp
+────────────────────────────────────────
+توضیح: setTimeout نباید داخل Zustand store باشد (ناسازگار با reactive architecture).
+این useEffect را در POIController اضافه کن:
+
+  useEffect(() => {
+    if (!isCelebratingStamp) return;
+    // Safety net: اگر StampCelebration بدون onComplete unmount شد
+    const safetyId = setTimeout(() => setCelebratingStamp(false), 5000);
+    return () => clearTimeout(safetyId);
+  }, [isCelebratingStamp, setCelebratingStamp]);
+
+────────────────────────────────────────
+تغییر ۴: رفع Memory Leak در pre-fetch صدا
+────────────────────────────────────────
+useEffect موجود را به این تغییر بده:
+
+  useEffect(() => {
+    if (!fullDetailPOI?.narrative?.audio_url) return;
+    const controller = new AbortController();
+    fetch(fullDetailPOI.narrative.audio_url, { signal: controller.signal })
+      .then(() => console.log('[POI] Narrative audio cached successfully'))
+      .catch(() => {}); // لغو شدن fetch یک error طبیعی است، نادیده بگیر
+    return () => controller.abort(); // cleanup: لغو fetch هنگام تغییر POI
+  }, [fullDetailPOI?.narrative?.audio_url]); // فقط وقتی URL عوض شد دوباره اجرا شود
+
+────────────────────────────────────────
+تغییر ۵: غیرفعال کردن دکمه "راهنمای صوتی لوکس"
+────────────────────────────────────────
+دکمه را به این تغییر بده (تا کاربر را گمراه نکند):
+
+  <button
+    disabled
+    className="w-full bg-gradient-to-b from-white/10 to-neutral-800/10 text-white/30
+               py-7 rounded-[3.5rem] font-black text-2xl flex items-center
+               justify-center gap-6 cursor-not-allowed"
+  >
+    <Waveform size={32} className="text-indigo-400/30" />
+    <span className="mt-1">راهنمای صوتی لوکس — به زودی</span>
+  </button>
+
+────────────────────────────────────────
+تغییر ۶: اضافه کردن alt به img
+────────────────────────────────────────
+  <img
+    src={getOptimizedImageUrl(activePOI.image)}
+    alt={activePOI.name}
+    className="w-full h-full object-cover"
+  />
+
+──────────────────────────────────────────────────────────────────────────────
+تست‌های فاز ۲ (بعد از اجرا بررسی کن):
+  ✓ کلیک سریع بین دو مکان — آیا اطلاعات مکان A روی کارت مکان B نمایش نمی‌دهد؟
+  ✓ در حین loading، کلیک روی مکان دیگر — آیا loading قبلی cancel می‌شود؟
+  ✓ پخش روایت مکان A، کلیک روی B — آیا صدا قطع می‌شود؟
+  ✓ ثبت ردپا، بستن POI — آیا nearbyFootprints سرور هنوز روی نقشه هستند؟
+  ✓ آیا در Console هیچ unhandled promise rejection وجود ندارد؟
+  ✓ در Zustand DevTools، بستن POI باید یک render واحد باشد (نه دو render)
+
+================================================================================
+فاز ۳ — رفع مشکل واکشی داده
+فایل: services/discoveryService.ts
+================================================================================
+
+هدف این فاز:
+  ۱. کوئری Supabase برای getCuratedPlaces به درستی کار کند
+  ۲. خطاها به جای بلعیده شدن، propagate شوند
+  ۳. Silent failure در parse مختصات با لاگ مشخص شود
+
+توجه مهم: این فاز را قبل از فاز ۱ اجرا کن.
+دلیل: اگر داده نیاید، نمی‌توان مطمئن بود مشکل از رندر است یا داده.
+
+────────────────────────────────────────
+تغییر ۱: بازنویسی کامل getCuratedPlaces
+────────────────────────────────────────
+
+  async getCuratedPlaces(cityName: string): Promise<POI[]> {
+    console.log(`[DiscoveryService] Fetching curated places for: ${cityName}`);
+
+    // مرحله ۱: گرفتن ID شهر از destinations
+    // دلیل استفاده از این روش به جای join:
+    // در Supabase PostgREST، .eq('related_table.column', value) روی جداول
+    // join شده به درستی فیلتر نمی‌کند. روش دو مرحله‌ای ۱۰۰٪ قابل اطمینان است.
+    const { data: dest, error: destError } = await supabase
+      .from('destinations')
+      .select('id')
+      .eq('name', cityName)
+      .single();
+
+    if (destError || !dest) {
+      console.error(
+        `[DiscoveryService] City "${cityName}" not found in destinations table`,
+        destError
+      );
+      throw new Error(`City not found: ${cityName}`);
+    }
+
+    // مرحله ۲: گرفتن attractions آن شهر با destination_id
+    const { data, error } = await supabase
+      .from('attractions')
+      .select('place_id, name, location, static_data, assets, is_premium')
+      .eq('destination_id', dest.id);
+
+    if (error) {
+      console.error('[DiscoveryService] Failed to fetch attractions:', error);
+      throw error; // به لایه بالاتر (store) propagate کن
+    }
+
+    const results: POI[] = [];
+
+    for (const item of data || []) {
+      const geo = GeoPoint.fromPostGIS(item.location);
+
+      if (!geo) {
+        // لاگ برای دیباگ — این مکان بی‌صدا حذف می‌شود
+        console.warn(
+          `[DiscoveryService] Could not parse location for attraction: "${item.name}"`,
+          { raw_location: item.location }
+        );
+        continue; // این مکان را رد کن، بقیه را ادامه بده
+      }
+
+      results.push({
+        id: item.place_id,
+        name: item.name,
+        lat: geo.lat,
+        lng: geo.lng,
+        category: item.static_data?.category || 'historical',
+        description: item.static_data?.description_fa || '',
+        address: item.static_data?.address || '',
+        image: item.assets?.photos?.[0] || '',
+        is_curated: true,
+        // ساختار یکپارچه moodTags (هماهنگ با searchNearby)
+        moodTags: [
+          item.static_data?.category || 'historical',
+          ...(item.is_premium ? ['Premium'] : [])
+        ]
+      });
+    }
+
+    console.log(
+      `[DiscoveryService] Successfully loaded ${results.length} curated places for ${cityName}`
+    );
+    return results;
+  }
+
+────────────────────────────────────────
+تغییر ۲: اصلاح error handling در searchNearby
+────────────────────────────────────────
+کد فعلی (مشکل‌دار):
+  if (error) {
+    console.error('RPC Error:', error);
+    return [];
+  }
+
+کد جدید (صحیح):
+  if (error) {
+    console.error('[DiscoveryService] searchNearby RPC failed:', error);
+    throw error; // caller باید بداند که خطا بوده
+  }
+
+────────────────────────────────────────
+تغییر ۳: اصلاح کامنت گمراه‌کننده مختصات
+────────────────────────────────────────
+کامنت موجود را با این جایگزین کن:
+  // PostGIS: ST_MakePoint(longitude, latitude) — ترتیب صحیح است
+  // px_lat = عرض جغرافیایی (Latitude) | px_lng = طول جغرافیایی (Longitude)
+  // تابع SQL در دیتابیس از ST_MakePoint(px_lng, px_lat) استفاده می‌کند که استاندارد PostGIS است
+
+──────────────────────────────────────────────────────────────────────────────
+تست‌های فاز ۳ (بعد از اجرا بررسی کن):
+  ✓ در Console باید این لاگ‌ها دیده شوند:
+      [DiscoveryService] Fetching curated places for: Istanbul
+      [DiscoveryService] Successfully loaded 20 curated places for Istanbul
+  ✓ اگر لاگ "City not found" دیده شد → نام شهر در دیتابیس را بررسی کن
+    (آیا 'Istanbul' است یا 'istanbul' یا 'İstanbul'؟ case-sensitive است)
+  ✓ اگر لاگ "Could not parse location" دیده شد → فرمت ستون location را
+    در Supabase Dashboard بررسی کن (GeoJSON vs WKB vs PostGIS Point)
+  ✓ در Supabase Dashboard، این query را مستقیم تست کن:
+      SELECT id FROM destinations WHERE name = 'Istanbul';
+      SELECT place_id, name FROM attractions WHERE destination_id = [ID];
+  ✓ بعد از این فاز، مارکرهای زرد ستاره‌دار روی نقشه دبی و استانبول باید
+    نمایش داده شوند (مشروط به اینکه فاز ۱ هم اجرا شده باشد)
+
+================================================================================
+بخش پنجم: چک‌لیست نهایی کل پروژه
+================================================================================
+
+پس از اجرای هر ۳ فاز، این موارد را بررسی کن:
+
+نقشه و مارکرها:
+  [ ] مارکرهای زرد ستاره‌دار (Curated) روی نقشه دبی نمایش داده می‌شوند
+  [ ] مارکرهای زرد ستاره‌دار (Curated) روی نقشه استانبول نمایش داده می‌شوند
+  [ ] کلیک روی مارکرهای گوگل (رستوران، مغازه...) پنجره سفید نمی‌دهد
+  [ ] کارت سفارشی برنامه هنگام کلیک روی هر مارکر نمایش داده می‌شود
+  [ ] تغییر شهر از دبی به استانبول مارکرها را به‌روز می‌کند
+
+کارت POI و State:
+  [ ] کلیک سریع بین دو مکان — اطلاعات مکان A روی کارت B ظاهر نمی‌شود
+  [ ] پخش روایت مکان A، انتخاب مکان B — صدا قطع می‌شود
+  [ ] ردپاهای سرور بعد از بستن و باز کردن POI روی نقشه باقی می‌مانند
+  [ ] دکمه "راهنمای صوتی لوکس" disabled است و "به زودی" نشان می‌دهد
+
+Console و خطاها:
+  [ ] هیچ خطای مربوط به clusterer یا addMarker وجود ندارد
+  [ ] هیچ unhandled promise rejection وجود ندارد
+  [ ] لاگ‌های [DiscoveryService] تعداد مکان‌های لود شده را نشان می‌دهند
+  [ ] هیچ هشدار React مربوط به img بدون alt وجود ندارد
+
+================================================================================
+بخش ششم: یادداشت‌های معماری برای آینده
+================================================================================
+
+۱. submitFootprint (فوری — قبل از لایو):
+   تابع submitFootprint در POIController.tsx هنوز جعلی است و فقط state لوکال
+   را آپدیت می‌کند. قبل از لایو، باید با footprintService.ts که در پروژه موجود
+   است اما استفاده نشده، ادغام شود.
+   فایل مرتبط: services/social/footprintService.ts
+
+۲. Open Now (فوری — قبل از لایو):
+   در POIController.tsx، وضعیت "Open Now" hardcode و همیشه سبز است.
+   باید از fullDetailPOI.openNow یا openingHours واقعی استفاده شود.
+
+۳. MarkerClusterer (برای آینده — وقتی مارکرها زیاد شدند):
+   اگر در آینده تعداد مارکرها از ۲۰۰ تجاوز کرد، می‌توان از
+   useMarkerClusterer hook خود @vis.gl/react-google-maps استفاده کرد
+   که با AdvancedMarker سازگار است. از @googlemaps/markerclusterer استفاده نکن.
+
+۴. nearbyFootprints از سرور (برای آینده):
+   در حال حاضر nearbyFootprints از سرور لود نمی‌شود. این باید در Dashboard.tsx
+   یا MapController با یک call به footprintService پیاده‌سازی شود.
+
+۵. GeoPoint.fromPostGIS (بررسی لازم):
+   اگر بعد از فاز ۳، لاگ "Could not parse location" دیده شد، باید
+   utils/geoPoint.ts را بررسی کرد. فرمت ذخیره‌سازی در Supabase می‌تواند
+   GeoJSON، WKB (hex)، یا PostGIS Point text باشد و هر کدام parse متفاوتی نیاز دارند.
+
+================================================================================
+پایان فایل analyze_and_plan.txt
+================================================================================
