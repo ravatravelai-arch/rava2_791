@@ -10,12 +10,12 @@ import { Footprints as StepIcon, Star } from 'lucide-react';
 import { APP_CONFIG } from '../../config';
 import { MapControls } from './MapControls';
 
-// کامپوننت مارکر مکان‌های منتخب (پاکسازی شده از Props کلاسترر)
+// کامپوننت مارکر مکان‌های منتخب
+// تغییر: اضافه کردن هندلینگ دقیق ایونت برای جلوگیری از انتشار کلیک به نقشه
 const CuratedMarker = React.memo(({ poi, onClick }: { 
   poi: any, 
-  onClick: () => void 
+  onClick: (e: google.maps.MapMouseEvent) => void 
 }) => {
-  // استفاده از GeoPoint برای اطمینان از صحت مختصات
   const position = useMemo(() => {
     const geo = new GeoPoint(poi.lat, poi.lng);
     return geo.toGoogle();
@@ -25,6 +25,7 @@ const CuratedMarker = React.memo(({ poi, onClick }: {
     <AdvancedMarker 
       position={position} 
       onClick={onClick}
+      className="curated-marker-z-index" // کلاس برای مدیریت Z-Index در صورت نیاز
     >
       <div className="relative cursor-pointer transition-transform active:scale-95 group">
         <div className="bg-white p-1 rounded-full shadow-[0_0_30px_rgba(234,179,8,0.6)] border-2 border-yellow-500 group-hover:scale-110 transition-transform">
@@ -40,7 +41,7 @@ const CuratedMarker = React.memo(({ poi, onClick }: {
   );
 });
 
-// کامپوننت مارکر ردپاها (پاکسازی شده از Props کلاسترر)
+// کامپوننت مارکر ردپاها
 const FootprintMarker = React.memo(({ fp }: { 
   fp: any
 }) => {
@@ -72,12 +73,8 @@ const MapController = () => {
   useEffect(() => {
     if (!map) return;
 
-    // ۱. اگر شهر انتخاب شده، دوربین را به آنجا ببر
     if (cityMode) {
-      // مقداردهی اولیه سرویس‌ها
       PlaceService.init();
-      
-      // دریافت مکان‌های منتخب شهر جدید
       fetchCurated(cityMode);
       
       const center = cityMode === 'Istanbul' 
@@ -90,7 +87,6 @@ const MapController = () => {
   }, [cityMode, map, fetchCurated]);
 
   useEffect(() => {
-    // ۲. ردیابی موقعیت کاربر
     if (navigator.geolocation) {
       const watchId = navigator.geolocation.watchPosition(
         (pos) => setUserLocation([pos.coords.latitude, pos.coords.longitude]),
@@ -106,15 +102,12 @@ const MapController = () => {
 
 export const MainMap: React.FC = () => {
   const { curatedPlaces, showCurated } = useDiscoveryStore();
-  // استخراج pendingFootprints برای استفاده در فاز ۲ و جلوگیری از باگ‌های رندرینگ
+  // نکته: pendingFootprints در فاز ۲ به استور اضافه می‌شود. اینجا هندل شده تا undefined نباشد.
   const { setActivePOI, setFullDetailPOI, setLoadingDetails, nearbyFootprints, pendingFootprints, userLocation } = useMapStore();
   
-  const mapRef = useRef<any | null>(null);
   const fetchingRef = useRef<string | null>(null);
-  // مدیریت حافظه: ذخیره رفرنس تایمر برای جلوگیری از نشت حافظه
   const fetchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // پاکسازی تایمرها هنگام Unmount شدن کامپوننت
   useEffect(() => {
     return () => {
       if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
@@ -123,9 +116,10 @@ export const MainMap: React.FC = () => {
 
   const visibleCurated = useMemo(() => showCurated ? curatedPlaces : [], [showCurated, curatedPlaces]);
 
+  // هندلر کلیک روی مکان‌های خود گوگل
   const handlePoiClick = useCallback(async (event: any) => {
-    // جلوگیری از باز شدن InfoWindow پیش‌فرض و سفید گوگل
-    event.stop();
+    // حیاتی: جلوگیری از باز شدن پنجره سفید پیش‌فرض گوگل
+    if (event.stop) event.stop();
     
     const placeId = event.placeId || (event.detail && event.detail.placeId);
     
@@ -133,8 +127,10 @@ export const MainMap: React.FC = () => {
 
     fetchingRef.current = placeId;
     setLoadingDetails(true);
+    // وقتی روی مکان جدید کلیک میشه، جزئیات قبلی باید بسته شه
     setFullDetailPOI(null);
     
+    // نمایش لودینگ در کارت پایین
     setActivePOI({ id: placeId, name: "در حال شناسایی...", lat: 0, lng: 0, category: 'loading' } as any);
 
     try {
@@ -143,14 +139,22 @@ export const MainMap: React.FC = () => {
       setActivePOI({ ...essentials, id: placeId, lat: geo.lat, lng: geo.lng } as any);
     } catch (err) {
       console.error("[Map] Interaction Error:", err);
+      // در صورت خطا، POI را نال می‌کنیم تا کاربر گیر نکند
       setActivePOI(null);
     } finally {
       setLoadingDetails(false);
-      // مدیریت صحیح تایمر با استفاده از ref
+      // پاکسازی تایمر قبلی و تنظیم تایمر جدید برای آزاد کردن قفل فچ
       if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
       fetchTimeoutRef.current = setTimeout(() => { fetchingRef.current = null; }, 500);
     }
   }, [setActivePOI, setFullDetailPOI, setLoadingDetails]);
+
+  // هندلر کلیک روی مارکرهای اختصاصی (Curated)
+  const handleCuratedClick = useCallback((poi: any) => {
+    // نکته: AdvancedMarker خودش ایونت را مدیریت می‌کند، اما ما لاجیک بیزنس را اینجا می‌زنیم
+    setFullDetailPOI(null);
+    setActivePOI(poi);
+  }, [setFullDetailPOI, setActivePOI]);
 
   const userGeo = useMemo(() => GeoPoint.fromArray(userLocation), [userLocation]);
 
@@ -173,11 +177,10 @@ export const MainMap: React.FC = () => {
             <CuratedMarker 
               key={poi.id} 
               poi={poi} 
-              onClick={() => { setFullDetailPOI(null); setActivePOI(poi); }} 
+              onClick={() => handleCuratedClick(poi)} 
             />
           ))}
 
-          {/* ترکیب ردپاهای سرور و ردپاهای موقت جلسه جاری */}
           {[...nearbyFootprints, ...(pendingFootprints || [])].map(fp => (
             <FootprintMarker 
               key={fp.id} 
