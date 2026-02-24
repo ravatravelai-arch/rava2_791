@@ -1,0 +1,25 @@
+
+PHASE 1 REFINEMENT NOTES (FINAL)
+---------------------------------
+
+1. COORDINATE SWAPPING PROTOCOL (GOLDEN RULE):
+   - Client Space: Uses LatLng [Latitude, Longitude].
+   - DB/PostGIS Space: Uses Point(Longitude Latitude).
+   - SWAP LOGIC: 
+     - Insert: DB_Lng = Client_Lat, DB_Lat = Client_Lng (Wrong interpretation fixed: PostGIS needs X,Y which is Lng,Lat).
+     - Actual protocol implemented in useUserStore: 
+       supabase.insert({ location: `POINT(${lng} ${lat})` })
+     - Retrieval: Reverse swap to [lat, lng] for Google Maps markers.
+
+2. TRIP SYNC RESILIENCE:
+   - All write operations check for Supabase Auth Session.
+   - If user is null, data persists only in LocalStorage.
+   - syncWithCloud() is exposed to trigger a manual sync after login.
+
+3. TTS OPTIMIZATION:
+   - Voice Rate: 0.85 (Slowed for clarity in noisy environments).
+   - Error Handling: Visual feedback if Browser TTS engine is missing (ttsError state).
+
+4. DATA INTEGRITY:
+   - Added manual Review Step in TicketScanner.
+   - Ensures OCR hallucinations don't pollute the trip timeline.

@@ -1,0 +1,30 @@
+
+COST OPTIMIZATION STRATEGY: THE "ESSENTIALS FIRST" MODEL
+--------------------------------------------------------
+
+1. GOOGLE MAPS BILLING TIERS (THE REALITY CHECK)
+   - **Essentials ($5.00/1k):** ID, Name, Address, Location, Types. (CHEAP)
+   - **Pro ($17.00/1k):** Phone, Opening Hours, Website. (MODERATE)
+   - **Enterprise ($25.00+/1k):** Ratings, Reviews, Price Level. (EXPENSIVE)
+   - **Place Photos ($7.00/1k):** Pixel Fetch. (VERY EXPENSIVE)
+
+2. THE "LAZY REFRESH" PROTOCOL (SERVER-SIDE)
+   - **Rule:** NEVER fetch "Pro" or "Enterprise" data for the map view.
+   - **Map View:** Fetches from `places_cache` DB.
+   - **Stale Check:** If `updated_at` > 30 Days -> Call Google API (Essentials Only) -> Update DB.
+
+3. PHOTO STRATEGY: HYBRID & CROWDSOURCED
+   - **Problem:** Loading Google Photos for every pin is bankruptcy ($7 per 1000 views).
+   - **Solution 1 (The 3D Fallback):**
+     - UI Default: Show a high-quality 3D Icon based on `category` (e.g., 3D Burger for food).
+     - Cost: $0.00.
+   - **Solution 2 (Crowdsourcing):**
+     - Gamification: Users get "Fuel" (Time) for uploading photos.
+     - Display Priority: `places_cache.crowd_photos` > `3D Icon` > `Google Photo`.
+   - **Solution 3 (On-Demand):**
+     - Only fetch Google Photo IF user explicitly clicks "See Official Photos" in the expanded details view.
+
+4. THE "PRO SHEET" (INTENT GATE)
+   - Accessing Reviews/Opening Hours is a "Pro" action.
+   - We only make the $17/$25 API call when the user expands the bottom sheet.
+   - We summarize reviews using AI (Gemini Flash) and cache the *summary* (vibe_check), not just the raw text.

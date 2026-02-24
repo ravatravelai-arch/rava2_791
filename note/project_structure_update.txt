@@ -1,0 +1,18 @@
+
+SUPABASE FOLDER ORGANIZATION
+----------------------------
+از این مرحله به بعد، تمام فایل‌های سوپابیس را به این شکل سازماندهی کن:
+
+/supabase/code/
+- شامل فایل‌های .txt با محتوای SQL خالص.
+- این فایل‌ها را کاربر مستقیماً در SQL Editor سوپابیس کپی می‌کند.
+
+/supabase/note/
+- شامل فایل‌های .txt با توضیحات معماری، RLS و AI Tooling.
+- این فایل‌ها راهنمای پیاده‌سازی هستند و اجرا نمی‌شوند.
+
+فایل‌های فعلی:
+- database_schema.txt -> منتقل شود به /code/
+- instructions.txt -> منتقل شود به /note/
+- phase2_rpc_functions.txt -> در /code/
+- phase2_seed_data.txt -> در /code/

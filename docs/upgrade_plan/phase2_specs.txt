@@ -1,0 +1,16 @@
+
+================================================================================
+SPECIFICATION: PHASE 2 - EXPLORE & VIBE FEED
+================================================================================
+هدف: تبدیل اپلیکیشن به یک پلتفرم اکتشافی (Discovery Platform).
+
+اجزای اصلی:
+1. RPC: search_nearby_places(user_lng, user_lat, radius, mood_tag)
+2. UI: Vertical Vibe Cards (Glassmorphism design).
+3. AI: Gemini Tool Integration for spatial queries.
+
+اولویت اجرایی:
+1. پیاده‌سازی تابع SQL در بک‌اِند.
+2. ساخت کامپوننت FeedCard.
+3. اتصال دکمه رهنما به ابزار جستجوی مکانی.
+================================================================================

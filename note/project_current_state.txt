@@ -1,0 +1,9 @@
+
+RAHNAM CURRENT STATE - FEB 2026
+--------------------------------
+1. CURRENT TASK: Finished Phase 4 (Social/Fuel Loop). Ready for Phase 5 (Semantic Brain).
+2. BACKEND: thmsfdugojokxtemnqdw.supabase.co (PostGIS + RLS Active).
+3. KEY REFINEMENT: Eliminated "Free Footprints" technical debt. Footprints are now contextual to POIs.
+4. COORDINATES: Protocol Verified. Client(Lat, Lng) <-> Server(Lng, Lat).
+5. REWARD SYSTEM: increment_wallet RPC function is the single point of truth for XP and Fuel.
+6. COMPONENT STYLE: Strict Single-Task, Modular, Glassmorphic.

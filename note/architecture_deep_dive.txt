@@ -1,0 +1,28 @@
+
+RAHNAM ARCHITECTURAL TREE (DEEP DIVE)
+-------------------------------------
+
+1. LAYER: UI (React 19 + Tailwind)
+   - Component Style: Atomic & Glassmorphic.
+   - Animation: Framer Motion (Always use 'layout' prop for smooth tab transitions).
+
+2. LAYER: STATE (Zustand + Persist)
+   - useUserStore: Single source of truth for Balance, XP, and Trips.
+   - useMapStore: Handles POI selection and Geofencing triggers.
+   - useDiscoveryStore: Manages the AI-curated feed and mood filters.
+
+3. LAYER: BRAIN (Gemini Live API)
+   - Protocol: WebSocket-first.
+   - Context: Injected via SYSTEM_INSTRUCTION + Dynamic Payloads.
+   - Function Calling: The "Hands" of the AI. Tools: 'search_nearby', 'evaluate_price'.
+
+4. LAYER: INFRASTRUCTURE (Supabase)
+   - PostGIS: Standardizes Lat/Lng into Geography types.
+   - RPC Functions: Executes complex spatial math on server to save client CPU.
+   - Edge Functions: Handles heavy-duty tasks (OCR, Price Verification).
+   - Realtime: The "Central Nervous System". Syncs DB changes to UI instantly.
+
+5. LAYER: SURVIVAL (Local APIs)
+   - Browser TTS: Multi-language support (Turkish/Arabic/Persian).
+   - Web Audio API: Synthetic sound effects.
+   - IndexedDB: High-performance caching for offline data.

@@ -1,0 +1,25 @@
+
+BUSINESS RULES: PHASE 4 (THE FUEL LOOP)
+---------------------------------------
+
+1. PASSPORT STAMPING (GEO-CHECKIN)
+- Trigger: User expands a POI details card OR system detects stay > 15min.
+- Reward: +50 XP, +0.1 AI Hours (6 Minutes Fuel).
+- UI: Stamp animation with sound effect.
+
+2. FOOTPRINTS (SOCIAL NOTES)
+- Goal: Create an "Iranian-only" tips layer on top of Google Maps.
+- Rule: Max 150 characters.
+- Moderation: AI (Gemini Flash Lite) checks for "Political", "Offensive", or "Ads".
+- Reward: +20 XP per footprint.
+
+3. PRICE WATCH (CROWDSOURCING DATA)
+- Logic: User submits new price + Photo.
+- Verification Logic (AI Task): 
+  "Is the number X visible on this menu/tag? If yes, verify."
+- Reward: +0.5 AI Hours (30 Minutes Fuel).
+- Purpose: Keeps our 'localPriceHint' updated without manual work.
+
+4. WALLET DISPLAY
+- Display in Minutes: `Math.floor(balance * 60)`.
+- Icon: Fuel/Battery icon that fills up.

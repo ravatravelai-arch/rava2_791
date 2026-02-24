@@ -1,0 +1,58 @@
+
+RAHNAM PROJECT ROADMAP (FINAL MVP SPEC)
+=======================================
+REFERENCE: upgrade_plan.txt (V3.0)
+
+PHASE 1: SMART TRAVEL WALLET (CORE UTILITY)
+-------------------------------------------
+Goal: Eliminate travel stress.
+1. **The Safe Haven Card:**
+   - Logic: Query `trips` table for `type='hotel'` and `date >= now`.
+   - UI: Sticky header in "My Trip".
+   - Action: One-tap "Take me to Hotel" (Native Language Address + TTS).
+2. **Magic Scan (OCR):**
+   - User uploads Ticket/Voucher image.
+   - **Edge Function:** `process-ticket` (Gemini Vision + Zod Validation).
+   - Stored in `trips` table.
+3. **Timeline:**
+   - Vertical timeline of events (Flight -> Hotel -> Tours).
+
+PHASE 2: EXPLORE & VIBE FEED (GEOSPATIAL)
+-----------------------------------------
+Goal: Discovery based on "Mood", not just "Category".
+1. **Spatial Search:**
+   - **RPC:** `search_nearby_places` (PostGIS).
+   - Filters: "Luxury" (Pol-dar), "Budget" (Moft-gardi), "Hidden Gems".
+2. **AI Curator:**
+   - "Daily Suggestion" box based on Weather + Time + Location.
+3. **Visual Feed:**
+   - Instagram-story style cards for nearby attractions (Cached Data).
+
+PHASE 3: SURVIVAL TOOLKIT (TOOLS TAB)
+-------------------------------------
+Goal: The Swiss Army Knife.
+1. **Bargain Calculator:**
+   - Input: Lira/Dirham. Output: Toman (Real-time).
+   - Feature: "Is it worth it?" button (AI valuation).
+2. **Emergency Flashcards:**
+   - Big text + Audio (e.g., "I have a nut allergy", "Where is the WC?").
+3. **Metro Map:**
+   - Offline interactive map.
+
+PHASE 4: SOCIAL & GAMIFICATION (PASSPORT)
+-----------------------------------------
+Goal: Retention & Crowdsourcing.
+1. **Digital Passport:**
+   - Geo-fencing triggers: "You visited Burj Khalifa!".
+   - Stamping the passport adds "Fuel" (Time).
+2. **Footprints:**
+   - Waze-style social notes on map (e.g., "Great coffee here").
+   - AI Moderated (Text Classification).
+3. **Price Watch:**
+   - User reports price change -> Uploads photo -> AI verifies -> Earns Fuel.
+
+PHASE 5: ARCHITECTURE & INFRASTRUCTURE
+--------------------------------------
+1. **PostGIS Migration:** Switch all location logic to `GEOGRAPHY(POINT, 4326)`.
+2. **Edge Functions:** Move OCR and Price Verification to server-side.
+3. **Cost Optimization:** Implement "Essentials First" & "3D Icon" strategy.

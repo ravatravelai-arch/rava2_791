@@ -1,0 +1,35 @@
+
+EDGE FUNCTION SPECIFICATION: 'process-ticket' (SECURE)
+
+1. SECURITY & VALIDATION (CRITICAL)
+   - **Library:** Must use `zod` for schema validation.
+   - **Risk:** LLMs can hallucinate or return malformed JSON.
+   - **Action:** Parse AI response -> `TripEventSchema.parse(response)` -> Return to Client.
+
+2. INPUT PAYLOAD
+   { "image_base64": "...", "mime_type": "image/jpeg" }
+
+3. AI MODEL
+   - Model: `google-gemini-2.0-flash`
+   - Prompt: Extract trip details into JSON.
+
+4. ZOD SCHEMA (TypeScript Definition)
+   ```typescript
+   const TripEventSchema = z.object({
+     type: z.enum(['flight', 'hotel', 'activity', 'food']),
+     title: z.string(),
+     time: z.string().regex(/^\d{2}:\d{2}$/), // HH:MM
+     date: z.string(), // YYYY/MM/DD
+     details: z.object({
+       flightNo: z.string().optional(),
+       gate: z.string().optional(),
+       seat: z.string().optional(),
+       reservationId: z.string().optional(),
+       address: z.string().optional(),
+     }).passthrough() // Allow extra fields but sanitize known ones
+   });
+   ```
+
+5. OUTPUT
+   - If Zod validation fails: Return Error 422 (Unprocessable Entity).
+   - If Success: Return `{ success: true, data: validatedData }`.

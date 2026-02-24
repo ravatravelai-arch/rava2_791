@@ -1,0 +1,19 @@
+
+PHASE 4 DEPLOYMENT CHECKLIST
+----------------------------
+
+1. SQL EXECUTION:
+   - فایل 'phase4_final_fix.sql' را در SQL Editor اجرا کنید. 
+   - این کار تابع 'increment_wallet' را می‌سازد که برای کارکردن دکمه ثبت مهر (Stamping) حیاتی است.
+
+2. STORAGE BUCKET:
+   - نام باکت: 'price_proofs'
+   - دسترسی: Public
+   - کاربرد: ذخیره عکس‌های اثبات قیمت برای تایید توسط Gemini Vision در فاز ۵.
+
+3. CLEANUP:
+   - فایل 'components/social/FootprintDraftModal.tsx' را از پروژه حذف کنید (اگر موجود است). 
+   - سیستم جدید از 'Ghostly UI' برای فیدبک ردپا استفاده می‌کند و نیازی به مودال درفت ندارد.
+
+4. NEXT STEP (PHASE 5):
+   - تمام دیتای جمع شده در جدول 'price_reports' در فاز ۵ توسط Gemini Vision تحلیل خواهد شد.

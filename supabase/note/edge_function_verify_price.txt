@@ -1,0 +1,81 @@
+
+// SUPABASE EDGE FUNCTION: verify-price
+// مسیر: supabase/functions/verify-price/index.ts
+
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { GoogleGenAI, Type } from "https://esm.sh/@google/genai@1.38.0"
+
+serve(async (req) => {
+  try {
+    // ۱. دریافت دیتای ردیف جدید از وب‌هوک سوپابیس
+    const payload = await req.json();
+    const { record } = payload; // دیتای جدول price_reports
+    
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    );
+
+    // ۲. دانلود تصویر مدرک از استوریج
+    const { data: fileData, error: downloadError } = await supabase.storage
+      .from('price_proofs')
+      .download(record.proof_image_url);
+
+    if (downloadError) throw new Error("Image download failed");
+
+    const base64Image = btoa(new Uint8Array(await fileData.arrayBuffer())
+      .reduce((data, byte) => data + String.fromCharCode(byte), ''));
+
+    // ۳. تحلیل توسط Gemini Vision (مدل فلش برای سرعت بالا)
+    const ai = new GoogleGenAI({ apiKey: Deno.env.get('GEMINI_API_KEY')! });
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: [
+        { inlineData: { mimeType: 'image/jpeg', data: base64Image } },
+        { text: `You are a Price Auditor for 'Rahnam' app. The user claims the price for '${record.item_name}' is exactly '${record.reported_price}'. 
+                 Check the image. Is this price or a very close value visible? 
+                 Return JSON ONLY.` 
+        }
+      ],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            verified: { type: Type.BOOLEAN },
+            confidence: { type: Type.NUMBER },
+            reasoning: { type: Type.STRING }
+          },
+          required: ["verified", "confidence", "reasoning"]
+        }
+      }
+    });
+
+    const aiResult = JSON.parse(response.text);
+
+    // ۴. اگر تایید شد: شارژ کیف پول + آپدیت وضعیت گزارش
+    if (aiResult.verified && aiResult.confidence > 0.7) {
+      // اجرای تابع RPC شارژ (۰.۵ ساعت شارژ معادل ۳۰ دقیقه)
+      await supabase.rpc('increment_wallet', { 
+        px_user_id: record.user_id, 
+        px_amount: 0.5, 
+        px_xp_amount: 100 
+      });
+
+      await supabase.from('price_reports').update({
+        ai_verification_status: 'verified',
+        ai_confidence_score: aiResult.confidence
+      }).eq('id', record.id);
+    } else {
+      await supabase.from('price_reports').update({
+        ai_verification_status: 'rejected'
+      }).eq('id', record.id);
+    }
+
+    return new Response(JSON.stringify({ success: true }), { headers: { "Content-Type": "application/json" } });
+  } catch (err) {
+    console.error("Verification Agent Error:", err);
+    return new Response(JSON.stringify({ error: err.message }), { status: 500 });
+  }
+})

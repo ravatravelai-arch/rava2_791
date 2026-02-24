@@ -1,0 +1,37 @@
+
+GAMIFICATION LOGIC: THE "TIME ECONOMY" (FUEL)
+---------------------------------------------
+Pivot: Users earn "Talk Time" (Fuel) instead of arbitrary coins.
+
+1. UNIT REPRESENTATION (SSOT)
+   - **Database:** Stores `HOURS` (Decimal). Example: `0.5` = 30 Minutes.
+   - **Frontend UI:** Must convert to `MINUTES` for display. 
+     - Formula: `Math.floor(wallet.balance * 60)`
+     - Display: "۱۲۰ دقیقه شارژ" (Not "2.0 Hours").
+
+2. THE "GRACE PERIOD" (UX PROTECTION)
+   - **Problem:** User runs out of credit mid-sentence.
+   - **Rule:** NEVER cut off an active response stream.
+   - **Logic:**
+     1. Check balance *before* opening microphone.
+     2. IF `balance <= 0`: Show blocking modal: "شارژت تموم شده رفیق! یه عکس آپلود کن تا راه بیفته."
+     3. IF `balance > 0` (even 0.001): Allow request.
+     4. IF balance hits 0 *during* streaming: Let the AI finish its current turn. Do not allow the *next* turn.
+
+3. THE FUEL LOOP (EARNING TIME)
+   - **Scenario:** User reports a price discrepancy or uploads a missing menu.
+   - **Verification:** Edge Function (Gemini Vision) confirms the data is valid.
+   - **Reward:** `UPDATE profiles SET wallet_balance = wallet_balance + 0.5 WHERE id = user_id;`
+   - **Value:** 0.5 Credits = 30 Minutes of AI Talk Time.
+
+4. REPUTATION (STATUS)
+   - While "Fuel" is consumed, "Reputation" is permanent.
+   - **Badges:**
+     - "Mayor" (First to upload photo of a place).
+     - "Price Police" (Verified 10 prices).
+   - **Perks:** High reputation users get priority support or access to beta features.
+
+5. MODERATION (AI TEXT CLASSIFIER)
+   - Before any footprint is published, it passes through a text classification filter.
+   - Flag: Hate speech, spam, political content.
+   - If Flagged: Auto-reject.

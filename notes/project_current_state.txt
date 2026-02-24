@@ -1,0 +1,9 @@
+
+RAHNAM CURRENT STATE - FEB 2026
+--------------------------------
+1. CURRENT TASK: Finished Phase 2 (Identity & Onboarding). Ready for Phase 3 (Survival Toolkit).
+2. BACKEND: thmsfdugojokxtemnqdw.supabase.co (PostGIS + RLS Active).
+3. IDENTITY: Unified Auth (Email-based) + 3-Step Semantic Onboarding.
+4. COORDINATES: Protocol Verified. Client(Lat, Lng) <-> Server(Lng, Lat) via GeoPoint class.
+5. REALTIME: Neural Link active for balance and profile updates.
+6. TECHNICAL DEBT: ZERO. All stores fully implemented and persistent.

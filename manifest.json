@@ -1,0 +1,19 @@
+
+{
+  "name": "رهنما | تور لیدر هوشمند",
+  "short_name": "رهنما",
+  "description": "دستیار هوشمند و لوکس توریست‌های ایرانی در استانبول و دبی",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050505",
+  "theme_color": "#eab308",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/2590/2590506.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ]
+}

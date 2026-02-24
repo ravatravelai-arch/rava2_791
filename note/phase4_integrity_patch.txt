@@ -1,0 +1,22 @@
+
+PHASE 4: FINAL INTEGRITY & INTERACTION PATCH
+--------------------------------------------
+
+1. GEOSPATIAL FREEDOM (Free Footprints):
+   - Users can now Right-Click (or Long Press simulation) anywhere on the map.
+   - A 'Draft Marker' appears at the exact coordinates.
+   - Submitting from this point calls footprintService.postFootprint with raw coordinates.
+
+2. AUTO-SYNC ENGINE:
+   - App.tsx now triggers useUserStore.syncWithCloud() after Splash.
+   - Ensures user XP and balance are always current from Supabase.
+
+3. PERFORMANCE OVERHAUL:
+   - Map components (POI markers, Footprints) are now wrapped in React.memo.
+   - Prevents recursive re-renders when userLocation updates frequently.
+
+4. UX MODERATION LOOP:
+   - Local footprints now show 'Pending' state visually if is_verified is false.
+   - Users get immediate feedback even before AI moderation completes.
+
+STATUS: PHASE 4 IS 100% COMPLETE & PRODUCTION READY.

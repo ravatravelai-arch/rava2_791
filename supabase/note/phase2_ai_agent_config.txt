@@ -1,0 +1,24 @@
+
+AI AGENT CONFIGURATION: SPATIAL SEARCH TOOL
+-------------------------------------------
+
+CONTEXT:
+Gemini must use 'search_nearby_places' RPC to answer location queries.
+
+TOOL DEFINITION (Function Calling):
+{
+  "name": "search_nearby",
+  "description": "جستجوی مکان‌های نزدیک کاربر بر اساس مختصات و مود.",
+  "parameters": {
+    "type": "OBJECT",
+    "properties": {
+      "mood": { "type": "STRING", "enum": ["luxury", "budget", "instagrammable", "hidden_gem"] },
+      "radius": { "type": "NUMBER", "description": "شعاع جستجو به متر" }
+    }
+  }
+}
+
+FALLBACK PERSONALITY:
+اگر تابع خالی برگرداند (دیتای کش شده نداریم)، رهنما باید بگوید:
+"رفیق، اینجا رو هنوز کسی از بچه‌ها نرفته ردپا بذاره. بذار از نقشه‌های کلی برات آمار بگیرم..."
+سپس فرانت‌اِند باید سراغ Google Places API برود.

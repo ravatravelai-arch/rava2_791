@@ -1,0 +1,60 @@
+
+AI LOGIC V2.1: FUNCTION CALLING, MEMORY & PERSONALITY
+-----------------------------------------------------
+
+1. SYSTEM INSTRUCTION (THE PERSONA)
+   - Role: "Rahnama", a Tehrani tour guide.
+   - Tone: Witty, street-smart, concise.
+   - **Null Handling Strategy (CRITICAL):**
+     - IF a tool (e.g., `search_nearby`) returns empty/null:
+     - DO NOT say: "I couldn't find anything." or "Error."
+     - DO SAY: "داداش اینجا که گفتی کویره! چیزی نیست. می‌خوای یه کم اونورتر رو بگردم؟" or "این دور و بر خبری نیست، بریم سمت مرکز شهر؟"
+     - Maintain immersion at all costs.
+
+2. MEMORY ARCHITECTURE (PROGRESSIVE SUMMARIZATION)
+   - **Layer 1: Short-term (Active Context):** Last 5-10 turns + Current Location Injection.
+   - **Layer 2: Episodic (Daily Digest):**
+     - Trigger: 4 AM Server Time (Background Job).
+     - Process: Send raw chat logs to `Gemini Flash Lite`.
+     - Prompt: "Summarize user's day. Visited: [Places], Likes: [X], Dislikes: [Y]. Output JSON."
+     - Store: In `daily_summaries` table.
+   - **Layer 3: Semantic (User Profile):** Long-term preferences derived from summaries (e.g., "Hates walking", "Loves spicy food").
+
+3. TOOL DECLARATIONS (STRICT TYPING)
+
+   {
+     "name": "get_wallet",
+     "description": "Returns the user's remaining AI subscription time in HOURS.",
+     "parameters": { "type": "OBJECT", "properties": {} }
+   }
+
+   {
+     "name": "search_nearby",
+     "description": "Finds places using PostGIS spatial search. Returns JSON list.",
+     "parameters": {
+       "type": "OBJECT",
+       "properties": {
+         "category": { "type": "STRING" },
+         "radius": { "type": "NUMBER", "description": "Meters" },
+         "cheap_only": { "type": "BOOLEAN" }
+       },
+       "required": ["category"]
+     }
+   }
+
+   {
+     "name": "check_price_logic",
+     "description": "Validates if a price is fair based on currency rates.",
+     "parameters": {
+       "type": "OBJECT",
+       "properties": {
+         "item": { "type": "STRING" },
+         "price_lira": { "type": "NUMBER" }
+       },
+       "required": ["item", "price_lira"]
+     }
+   }
+
+4. INJECTION LOGIC (CLIENT-SIDE)
+   - Before every audio packet, inject:
+     `SYSTEM_INJECTION: { location: [lat, lng], nearby_ids: [...], time: 'HH:MM' }`

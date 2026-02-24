@@ -1,0 +1,18 @@
+
+PHASE 2 IMPLEMENTATION NOTES (UPDATED):
+
+1. ID GENERATION STRATEGY:
+   - Frontend currently uses `Math.random()` for optimistic updates (showing the ticket immediately after scan).
+   - Backend uses `UUID`.
+   - SYNC LOGIC: When the Edge Function processes the ticket and inserts it into the DB, it returns the real UUID. 
+   - The Frontend must replace the temporary ID with the real UUID to allow future deletions/edits.
+
+2. JSONB FLEXIBILITY:
+   - We chose JSONB for `details` because travel documents vary wildly.
+   - However, the `TripEvent` interface in `types.ts` is strict.
+   - The Backend API must sanitize the AI output to ensure it doesn't return garbage keys that might break the UI rendering.
+
+3. "SAFE HAVEN" LOGIC:
+   - The `SafeHavenCard` component specifically queries for `type: 'hotel'`.
+   - Query: `supabase.from('trips').select('*').eq('user_id', uid).eq('type', 'hotel').gte('date', today).order('date', { ascending: true }).limit(1)`
+   - This ensures the user always sees their *current* or *next* hotel.

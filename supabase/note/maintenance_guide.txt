@@ -1,0 +1,20 @@
+RAHNAM SYSTEM MAINTENANCE GUIDE (2026)
+--------------------------------------
+
+1. ORPHANED FILE CLEANUP (Storage Integrity)
+   - Issue: Client-side compensating transactions may fail if the browser is closed during a sync error.
+   - Requirement: Set up a Supabase Edge Function scheduled every 24h (Cron) to perform cross-reference cleanup.
+   - Logic: 
+     DELETE FROM storage.objects 
+     WHERE bucket_id = 'tickets' 
+     AND name NOT IN (SELECT (details->>'file_path') FROM trips WHERE type='flight');
+
+2. RATE LIMITING (Financial Security)
+   - Database: Monitor 'process_poi_visit' calls per user ID.
+   - Threshold: Max 20 stamps per day per user.
+   - Alert: Trigger notification if a user executes RPC more than 10 times in 1 minute.
+
+3. REALTIME MONITORING
+   - Publication: 'supabase_realtime' must include 'profiles' to ensure the Magic Button Fuel Gauge works accurately in Phase 6.
+
+ARCHITECT'S VERDICT: System is stable. Zero legacy debt.

@@ -1,0 +1,123 @@
+
+-- EXTENSIONS
+CREATE EXTENSION IF NOT EXISTS postgis;
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- =====================================================================================
+-- CRITICAL ARCHITECTURE WARNING (READ BEFORE QUERYING)
+-- =====================================================================================
+-- ⚠️ POSTGIS COORDINATE ORDER IS (LONGITUDE, LATITUDE) -> (X, Y)
+-- ⚠️ GOOGLE MAPS / LEAFLET ORDER IS (LATITUDE, LONGITUDE) -> (Y, X)
+--
+-- YOU MUST SWAP COORDINATES BEFORE INSERTING:
+-- Correct: ST_SetSRID(ST_MakePoint(lng, lat), 4326)
+-- Incorrect: ST_MakePoint(lat, lng) -> Will place user in Indian Ocean!
+-- =====================================================================================
+
+-- 1. PROFILES (User Identity & Time Economy)
+CREATE TABLE profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users ON DELETE CASCADE,
+  username TEXT UNIQUE,
+  
+  -- CHANGED: wallet_balance now represents "AI Hours" (Decimal)
+  -- DISPLAY LOGIC: Frontend must multiply by 60 to show "Minutes".
+  -- DATABASE LOGIC: Stored as Hours (e.g., 1.5 = 90 mins).
+  -- DEFAULT: 2.0 Hours (Welcome Gift).
+  wallet_balance DECIMAL DEFAULT 2.0, 
+  
+  xp_level INTEGER DEFAULT 1,
+  reputation_score INTEGER DEFAULT 0,
+  
+  -- Context
+  current_city TEXT CHECK (current_city IN ('Istanbul', 'Dubai', 'Tehran')),
+  preferences JSONB DEFAULT '{}'::JSONB, -- { "likes": ["history", "food"], "budget": "medium" }
+  
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- CRITICAL INDEX: GIN Index for JSONB querying
+CREATE INDEX idx_profiles_preferences ON profiles USING GIN (preferences);
+
+-- 2. PLACES_CACHE (The Cost-Saving Layer)
+CREATE TABLE places_cache (
+  place_id TEXT PRIMARY KEY, 
+  name TEXT NOT NULL,
+  
+  -- COORDINATE WARNING: Store as (Lng, Lat)
+  location GEOGRAPHY(POINT, 4326) NOT NULL, 
+  
+  category TEXT,
+  google_types TEXT[],
+  
+  -- CACHED METADATA
+  address TEXT,
+  phone TEXT,
+  opening_hours JSONB,
+  
+  -- PHOTO STRATEGY (Hybrid)
+  -- We store references. Front-end prefers 'crowd_photos' -> '3d_icon' -> 'google_photo'.
+  google_photo_refs JSONB[], 
+  crowd_photos JSONB[] DEFAULT '{}', 
+  
+  -- AI ANALYTICS
+  vibe_summary TEXT,
+  last_ai_analysis TIMESTAMP WITH TIME ZONE,
+  
+  -- REFRESH LOGIC (Lazy Refresh)
+  -- Logic: If (Now - updated_at) > 30 Days -> Fetch Essentials from Google -> Update DB
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX places_geo_idx ON places_cache USING GIST (location);
+
+-- 3. TRIPS (Smart Wallet)
+CREATE TABLE trips (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  
+  type TEXT CHECK (type IN ('flight', 'hotel', 'activity', 'food')),
+  title TEXT,
+  
+  -- Event Timing
+  start_time TIMESTAMP WITH TIME ZONE,
+  end_time TIMESTAMP WITH TIME ZONE,
+  
+  -- Event Location
+  location GEOGRAPHY(POINT, 4326),
+  destination_address TEXT,
+  
+  details JSONB,
+  
+  status TEXT CHECK (status IN ('upcoming', 'completed', 'cancelled')) DEFAULT 'upcoming',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- CRITICAL INDEX: Composite index for the "Safe Haven" query (Find current hotel fast)
+CREATE INDEX idx_trips_safe_haven ON trips (user_id, type, start_time);
+
+-- 4. FOOTPRINTS (Social Waze)
+CREATE TABLE footprints (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES profiles(id),
+  place_id TEXT REFERENCES places_cache(place_id),
+  location GEOGRAPHY(POINT, 4326),
+  content TEXT,
+  mood TEXT, 
+  upvotes INTEGER DEFAULT 0,
+  is_verified BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 5. PRICE_REPORTS (Contribution)
+CREATE TABLE price_reports (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES profiles(id),
+  place_id TEXT REFERENCES places_cache(place_id),
+  item_name TEXT,
+  reported_price DECIMAL,
+  currency TEXT,
+  proof_image_url TEXT,
+  ai_verification_status TEXT DEFAULT 'pending', 
+  ai_confidence_score DECIMAL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);

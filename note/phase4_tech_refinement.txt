@@ -1,0 +1,23 @@
+
+RAHNAM TECHNICAL REFINEMENT - PHASE 4 POST-MORTEM
+-------------------------------------------------
+
+1. ATOMIC UPLOAD PATTERN (Storage + DB):
+   - Problem: Orphaned files in 'price_proofs' bucket on DB failure.
+   - Solution: Implemented a cleanup block in PriceWatchModal. If database insert fails, we attempt to delete the uploaded object from Supabase Storage.
+
+2. MISSION DECOUPLING:
+   - Logic for Mission initiation moved out of POIController.
+   - Component: POIMissionAction.tsx
+   - Benefit: Reusable in 'Explore' tab or 'Daily Curator' without duplicating code.
+
+3. MAP SCALABILITY:
+   - Footprints now use MarkerClusterer via the 'nearbyFootprints' state.
+   - Reduced AdvancedMarker re-renders by using React.memo on custom marker components.
+
+4. SOUND DESIGN (UX):
+   - Created a synthetic 'Stamp' sound using Web Audio API (OscillatorNode).
+   - Frequency: 200Hz -> 50Hz (Decay) to simulate physical impact.
+
+5. SECURITY:
+   - Added 'isStamping' lock in useUserStore to prevent double-click race conditions on rewards.

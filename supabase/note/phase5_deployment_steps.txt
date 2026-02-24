@@ -1,0 +1,28 @@
+
+PHASE 5: DEPLOYMENT GUIDE (AGENTIC BRAIN)
+-----------------------------------------
+
+1. DATABASE UPDATE:
+   - اجرا کردن فایل 'phase5_infrastructure.sql'.
+   - اجرا کردن فایل 'phase4_final_fix.sql' (اگر قبلاً انجام نشده).
+
+2. SECRETS SETUP (CRITICAL):
+   - در پنل Supabase > Settings > API > Secrets، حتماً مقدار زیر را ست کنید:
+     GEMINI_API_KEY = [کلید شما از گوگل]
+
+3. EDGE FUNCTIONS:
+   - تابع ۱: 'process-ticket' (کد در edge_function_process_ticket.txt)
+   - تابع ۲: 'verify-price' (کد در edge_function_verify_price.txt)
+
+4. WEBHOOK SETUP (The Automation):
+   - برو به Database > Webhooks.
+   - نام: ai-auto-verification
+   - جدول: price_reports
+   - رویداد: INSERT
+   - مقصد: Supabase Edge Functions -> verify-price
+
+5. REALTIME:
+   - در بخش Database > Replication، مطمئن شو جدول 'profiles' تیک Realtime داشته باشد.
+   - این کار باعث می‌شود به محض اینکه AI جایزه را واریز کرد، کاربر در فرانت‌اِند بدون رفرش، افزایش موجودی را ببیند.
+
+تبریک! رهنما حالا یک سیستم کاملاً خودکار و هوشمند دارد که در پس‌زمینه برای مسافران کار می‌کند.

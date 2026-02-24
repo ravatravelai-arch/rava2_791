@@ -1,0 +1,23 @@
+
+-- ==========================================
+-- PHASE 6: FUEL DEDUCTION ENGINE
+-- ==========================================
+
+-- تابع کسر سوخت: ثانیه‌های مصرف شده را به ساعت تبدیل و از موجودی کسر می‌کند
+CREATE OR REPLACE FUNCTION deduct_fuel(px_seconds float8)
+RETURNS void 
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_hours_to_deduct DECIMAL;
+BEGIN
+  -- تبدیل ثانیه به ساعت (واحد ذخیره‌سازی دیتابیس)
+  v_hours_to_deduct := px_seconds / 3600.0;
+
+  UPDATE profiles
+  SET 
+    wallet_balance = GREATEST(0, wallet_balance - v_hours_to_deduct)
+  WHERE id = auth.uid();
+END;
+$$;

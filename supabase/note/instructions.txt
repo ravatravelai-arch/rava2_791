@@ -1,0 +1,21 @@
+
+SETTING UP PHASE 1: SMART WALLET
+--------------------------------
+
+1. TABLE: trips
+   - Create the 'trips' table according to database_schema.txt.
+   - Ensure RLS (Row Level Security) is enabled: 
+     "users can only see their own trips" (auth.uid() = user_id).
+
+2. STORAGE BUCKET: tickets
+   - Create a public bucket named 'tickets' for storing uploaded vouchers.
+   - Add policy for authenticated uploads.
+
+3. EDGE FUNCTION: process-ticket
+   - Setup a Deno Edge Function.
+   - Use @google/genai inside the function to process images.
+   - Requirement: Validate output with Zod to match the TripEvent interface.
+
+4. POSTGIS SYNC:
+   - Ensure the 'location' column is GEOGRAPHY(POINT, 4326).
+   - Use ST_AsText or ST_X/ST_Y for retrieval.

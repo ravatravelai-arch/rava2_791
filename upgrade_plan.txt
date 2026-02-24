@@ -1,0 +1,58 @@
+================================================================================
+RAHNAM ARCHITECTURE MASTERPLAN V5.0 (THE AGENTIC SOURCE)
+================================================================================
+STATUS: INFRASTRUCTURE HARDENED | PHASE 5 CLOSED
+CONTEXT: PRODUCTION GRADE | POSTGIS NATIVE | REALTIME NEURAL LINK
+================================================================================
+
+--------------------------------------------------------------------------------
+0. CORE ARCHITECTURE RULES (NON-NEGOTIABLE)
+--------------------------------------------------------------------------------
+0.1. GEOSPATIAL COORDINATES (THE DEADLY TRAP)
+   - Frontend: (Lat, Lng). Backend: (Lng, Lat). 
+   - ALWAYS swap before sending to DB. ALWAYS swap back on receipt.
+
+0.2. ATOMICITY PROTOCOL
+   - Any Storage upload MUST have a DB reference. 
+   - Failure in DB = Auto-Delete from Storage. No orphan files allowed.
+
+0.3. TIME ECONOMY (FUEL)
+   - Database stores HOURS (Decimal). UI displays MINUTES (Math.floor * 60).
+   - Realtime balance updates via Supabase Publications only.
+
+0.4. AI CONTEXT INTEGRITY
+   - Never trust model JSON output directly. Always use `extractJSON` utility.
+   - Inject `semantic_profile` at every socket connection.
+
+--------------------------------------------------------------------------------
+COMPLETED PHASES
+--------------------------------------------------------------------------------
+PHASE 1: SMART WALLET (OCR & Persistence) - DONE
+PHASE 2: DISCOVERY ENGINE (Spatial Search & Vibe Check) - DONE
+PHASE 3: SURVIVAL TOOLKIT (Bargain Calc & Subway) - DONE
+PHASE 4: SOCIAL & GAMIFICATION (Digital Passport & Footprints) - DONE
+PHASE 5: AGENTIC BRAIN (Semantic Memory & Realtime Neuro-Link) - DONE
+
+--------------------------------------------------------------------------------
+UPCOMING PHASES
+--------------------------------------------------------------------------------
+
+PHASE 6: FUEL UX & LIVE PULSE
+Goal: Visualize consumption in real-time.
+- 6.1. Magic Button Gauge: Circular progress ring around the mic.
+- 6.2. Socket Deduction Logic: Client-side estimation of fuel usage.
+- 6.3. Haptic Feedback: Subtle vibrations on reward/low fuel.
+
+PHASE 7: RESILIENCE & OFFLINE (PWA)
+Goal: Reliability in metros and dead zones.
+- 7.1. IndexedDB Sync: Cache visited POIs and Footprints.
+- 7.2. Asset Caching: Full offline support for Subway Maps and Icons.
+
+PHASE 8: LUXURY POLISH
+Goal: High-end feeling.
+- 8.1. Shared Element Transitions.
+- 8.2. Premium Onboarding.
+
+================================================================================
+"Code is silent. Infrastructure talks. AI remembers." - Architect's Verdict
+================================================================================

@@ -1,0 +1,13 @@
+
+RAHNAM ROADMAP STATUS - FEB 2026
+---------------------------------
+[COMPLETED CORE PHASES 1-8] - Infrastructure Hardened.
+
+PROJECT: FROZEN MEMORY (Hybrid Static/Live Architecture)
+------------------------------------------------------
+PHASE 1: DATA INFRASTRUCTURE   [DONE] <--- 🏛️ Knowledge Vault Active
+PHASE 2: HYBRID AUDIO ENGINE   [PENDING]
+PHASE 3: LOGIC & GEO-CMS       [PENDING]
+PHASE 4: OFFLINE RESILIENCE    [PENDING]
+
+NEXT TASK: Rewrite AudioGraph.ts to handle static MP3 streams with dynamic VAD thresholds.

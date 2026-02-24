@@ -1,0 +1,15 @@
+
+SUPABASE PROJECT IDENTITIES (MASTER REFERENCE)
+----------------------------------------------
+Project URL: https://thmsfdugojokxtemnqdw.supabase.co
+Anon Key: eyJhbGci... (Updated in supabaseClient.ts)
+
+INFRASTRUCTURE STATUS:
+- [CONFIRMED] Database Schema (V1) Executed.
+- [CONFIRMED] PostGIS Extension Active.
+- [CONFIRMED] Storage Bucket 'tickets' Created (Public Access).
+- [PENDING] Edge Function 'process-ticket' setup (Phases 2-4).
+
+SCHEMA NOTES:
+- Primary Tables: profiles, places_cache, trips, footprints, price_reports.
+- Spatial Index: GIST on places_cache(location) and trips(location).

@@ -1,0 +1,22 @@
+
+PHASE 2: EXPLORE & VIBE ENGINE LOGIC
+------------------------------------
+
+1. MOOD TO CATEGORY MAPPING:
+   - "پولدار طور" (Luxury) -> Price_level >= 3, Types: 'fine_dining', 'resort'.
+   - "مفت گردی" (Budget) -> Price_level <= 1, Types: 'park', 'street_food'.
+   - "خوراک استوری" (Instagrammable) -> Vibe_tags contains 'view', 'aesthetic'.
+   - "مخفیگاه" (Hidden Gems) -> User_ratings_count < 100 AND rating > 4.5.
+
+2. AI TOOLING SPEC (Function Calling):
+   - Name: `search_nearby`
+   - Args: { lat: number, lng: number, mood: string, radius: number }
+   - Logic: AI calls this tool -> Frontend executes RPC -> Data returned to AI -> AI talks.
+
+3. PERFORMANCE & COST:
+   - Feed uses "Infinite Scroll".
+   - Images are lazy-loaded.
+   - Initial map markers only show "Essentials" (Name, Category).
+
+4. GEOSPATIAL PROTOCOL:
+   - REMINDER: Always send (Lng, Lat) to RPC.

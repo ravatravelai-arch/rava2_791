@@ -1,0 +1,7 @@
+
+BACKEND LOGIC RULES V2
+----------------------
+1. WALLET CONSUMPTION: Future task - deduct fuel based on WebSocket duration.
+2. AI VERIFICATION: The 'verify-price' Edge Function must return confidence > 0.7 to trigger 'increment_wallet'.
+3. SEMANTIC PROFILE: Profiles table now has a 'semantic_profile' JSONB column. Use this for memory injection.
+4. REALTIME REPLICATION: Ensure 'profiles' is in the replication list for instant balance updates in UI.

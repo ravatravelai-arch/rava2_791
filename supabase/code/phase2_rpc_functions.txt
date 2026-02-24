@@ -1,0 +1,55 @@
+
+-- ==========================================
+-- PHASE 2: SPATIAL SEARCH ENGINE (RPC)
+-- ==========================================
+
+-- این تابع مختصات کاربر را گرفته و مکان‌های اطراف را با فیلتر مود برمی‌گرداند.
+CREATE OR REPLACE FUNCTION search_nearby_places(
+  px_lat float8,
+  px_lng float8,
+  px_radius float8 DEFAULT 5000,
+  px_mood text DEFAULT NULL
+)
+RETURNS TABLE (
+  id text,
+  name text,
+  lat float8,
+  lng float8,
+  category text,
+  vibe_summary text,
+  price_level int,
+  image_url text
+) 
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT 
+    pc.place_id as id,
+    pc.name,
+    ST_Y(pc.location::geometry) as lat,
+    ST_X(pc.location::geometry) as lng,
+    pc.category,
+    pc.vibe_summary,
+    (pc.opening_hours->>'price_level')::int as price_level,
+    CASE 
+      WHEN array_length(pc.crowd_photos, 1) > 0 THEN (pc.crowd_photos[1]->>'url')::text
+      ELSE NULL 
+    END as image_url
+  FROM places_cache pc
+  WHERE 
+    ST_DWithin(
+      pc.location,
+      ST_SetSRID(ST_MakePoint(px_lng, px_lat), 4326), -- PROTOCOL: Lng, Lat
+      px_radius
+    )
+    AND (
+      px_mood IS NULL OR 
+      pc.category = px_mood OR 
+      pc.google_types @> ARRAY[px_mood]
+    )
+  ORDER BY pc.updated_at DESC
+  LIMIT 20;
+END;
+$$;

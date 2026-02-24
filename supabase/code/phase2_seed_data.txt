@@ -1,0 +1,22 @@
+
+-- ==========================================
+-- PHASE 2: SEED DATA (ISTANBUL & DUBAI)
+-- ==========================================
+
+-- درج چند مکان نمونه برای اینکه فید اکسپلور خالی نباشد
+-- مختصات بر اساس Lng, Lat ذخیره می‌شوند.
+
+INSERT INTO places_cache (place_id, name, location, category, vibe_summary, google_types)
+VALUES 
+-- استانبول - مخفیگاه (Galata Area)
+('test_001', 'کافه مخفی گالاتا', ST_SetSRID(ST_MakePoint(28.9744, 41.0256), 4326), 'hidden_gem', 'یه کافه دنج با ویوی ۳۶۰ درجه که فقط محلی‌ها میشناسنش.', ARRAY['cafe', 'art_gallery']),
+
+-- استانبول - پولدار طور (Nisantasi)
+('test_002', 'رستوران فوق لوکس نصرت', ST_SetSRID(ST_MakePoint(28.9922, 41.0511), 4326), 'luxury', 'تجربه استیک با روکش طلا در قلب نیشانتاشی.', ARRAY['restaurant', 'fine_dining']),
+
+-- دبی - خوراک استوری (Palm Jumeirah)
+('test_003', 'پالم ویو دبی', ST_SetSRID(ST_MakePoint(55.1389, 25.1124), 4326), 'instagrammable', 'بهترین نقطه برای عکاسی از کل نخل دبی در غروب.', ARRAY['observation_deck', 'tourist_attraction']);
+
+-- فعال کردن دسترسی خواندن عمومی برای همه
+ALTER TABLE places_cache ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Enable read access for everyone" ON places_cache FOR SELECT USING (true);

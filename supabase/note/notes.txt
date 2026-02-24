@@ -1,0 +1,29 @@
+
+ARCHITECTURE & SECURITY NOTES (SINGLE SOURCE OF TRUTH)
+*** IMPORTANT: ALWAYS REFER TO `upgrade_plan.txt` V3.0 FOR IMPLEMENTATION DETAILS ***
+
+1. GEOSPATIAL COORDINATES TRAP (CRITICAL)
+   - **Issue:** Google Maps uses (Lat, Lng). PostGIS uses (Lng, Lat).
+   - **Rule:** You MUST swap coordinates in the Backend/Edge Function before inserting into DB.
+   - **Failure:** If ignored, users in Tehran will appear in the Indian Ocean.
+
+2. GRACE PERIOD UX
+   - **Issue:** Cutting off a user mid-sentence because balance hit 0.0 is bad UX.
+   - **Rule:** If balance > 0 at start of turn, allow the FULL response to complete.
+   - **Action:** Check balance only at the *initiation* of a session or turn.
+
+3. API KEY SECURITY
+   - **Gemini Live (WebSocket):** Client-side key restricted by HTTP Referrer (`https://rahnam.app/*`).
+   - **Gemini Flash (REST):** Server-side only (Edge Functions). NEVER call Flash from React directly.
+
+4. COST CONTROL
+   - **Photos:** Do not load Google Photos on map markers. Use 3D Icons.
+   - **Caching:** Cache Place Details for 30 days.
+   - **Lazy Loading:** Only fetch Reviews/Hours when user opens the full details sheet.
+
+5. OFFLINE CAPABILITIES
+   - Sync `places_cache` to IndexedDB for offline map viewing of recently visited places.
+
+6. STATE MANAGEMENT
+   - **Map Freeze Fix:** Ensure `fetchingRef` is cleared in a `finally` block in React components.
+   - **Zod:** All AI JSON outputs must be validated with Zod before use.
